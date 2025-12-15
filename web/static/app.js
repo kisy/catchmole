@@ -71,14 +71,14 @@ function showToast(msg) {
 
 // Theme Helper
 function getInitialTheme() {
-    const persisted = localStorage.getItem('probpf_theme');
+    const persisted = localStorage.getItem('catchmole_theme');
     if (persisted) return persisted;
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
 function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('probpf_theme', theme);
+    localStorage.setItem('catchmole_theme', theme);
 }
 
 // Alpine Initialization
@@ -90,8 +90,8 @@ document.addEventListener('alpine:init', () => {
         clients: [],
         global: {},
         search: '',
-        sortBy: localStorage.getItem('probpf_sortBy') || 'total_download',
-        sortDesc: localStorage.getItem('probpf_sortDesc') === 'true',
+        sortBy: localStorage.getItem('catchmole_sortBy') || 'total_download',
+        sortDesc: localStorage.getItem('catchmole_sortDesc') === 'true',
         startTime: '',
         autoRefresh: true,
         theme: getInitialTheme(),
@@ -161,16 +161,16 @@ document.addEventListener('alpine:init', () => {
                 this.sortBy = col;
                 this.sortDesc = true;
             }
-            localStorage.setItem('probpf_sortBy', this.sortBy);
-            localStorage.setItem('probpf_sortDesc', this.sortDesc);
+            localStorage.setItem('catchmole_sortBy', this.sortBy);
+            localStorage.setItem('catchmole_sortDesc', this.sortDesc);
         },
 
         setMobileSort(val) {
             const [col, dir] = val.split(':');
             this.sortBy = col;
             this.sortDesc = dir === 'desc';
-            localStorage.setItem('probpf_sortBy', this.sortBy);
-            localStorage.setItem('probpf_sortDesc', this.sortDesc);
+            localStorage.setItem('catchmole_sortBy', this.sortBy);
+            localStorage.setItem('catchmole_sortDesc', this.sortDesc);
         },
 
         async resetAll() {
@@ -196,13 +196,13 @@ document.addEventListener('alpine:init', () => {
         filterProtocol: '',
         filterRemoteIP: '',
         filterRemotePort: '',
-        ipProvider: localStorage.getItem('probpf_ipProvider') || 'https://ipinfo.io/',
+        ipProvider: localStorage.getItem('catchmole_ipProvider') || 'https://ipinfo.io/',
         autoRefresh: true,
         theme: getInitialTheme(),
         
         // Flow Sorting
-        sortBy: localStorage.getItem('probpf_detail_sortBy') || 'session_download',
-        sortDesc: (localStorage.getItem('probpf_detail_sortDesc') ?? 'true') === 'true',
+        sortBy: localStorage.getItem('catchmole_detail_sortBy') || 'session_download',
+        sortDesc: (localStorage.getItem('catchmole_detail_sortDesc') ?? 'true') === 'true',
 
         init() {
             if (!this.mac) {
@@ -308,21 +308,21 @@ document.addEventListener('alpine:init', () => {
                 this.sortBy = col;
                 this.sortDesc = true;
             }
-            localStorage.setItem('probpf_detail_sortBy', this.sortBy);
-            localStorage.setItem('probpf_detail_sortDesc', this.sortDesc);
+            localStorage.setItem('catchmole_detail_sortBy', this.sortBy);
+            localStorage.setItem('catchmole_detail_sortDesc', this.sortDesc);
         },
 
         setMobileSort(val) {
             const [col, dir] = val.split(':');
             this.sortBy = col;
             this.sortDesc = dir === 'desc';
-            localStorage.setItem('probpf_detail_sortBy', this.sortBy);
-            localStorage.setItem('probpf_detail_sortDesc', this.sortDesc);
+            localStorage.setItem('catchmole_detail_sortBy', this.sortBy);
+            localStorage.setItem('catchmole_detail_sortDesc', this.sortDesc);
         },
 
         setProvider(val) {
             this.ipProvider = val;
-            localStorage.setItem('probpf_ipProvider', val);
+            localStorage.setItem('catchmole_ipProvider', val);
         },
 
         clearFilters() {

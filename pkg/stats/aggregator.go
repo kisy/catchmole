@@ -27,7 +27,7 @@ type Aggregator struct {
 
 	staticNames map[string]string
 
-	monitorLAN bool
+	ignoreLAN bool
 
 	// Interface Filtering
 	interfaceName  string
@@ -123,9 +123,8 @@ func (a *Aggregator) handleEvent(ev monitor.FlowEvent) {
 		srcMac := a.nw.GetMAC(srcIP)
 		dstMac := a.nw.GetMAC(dstIP)
 
-		// Filter LAN-to-LAN if disabled
-		// Definition: Both Src and Dst are in the monitored interface's subnets
-		if !a.monitorLAN && len(a.lanSubnets) > 0 {
+		// Filter LAN-to-LAN if enabled (ignoreLAN is true)
+		if a.ignoreLAN && len(a.lanSubnets) > 0 {
 			srcInSubnet := false
 			dstInSubnet := false
 
@@ -139,12 +138,11 @@ func (a *Aggregator) handleEvent(ev monitor.FlowEvent) {
 			}
 
 			if srcInSubnet && dstInSubnet {
-				// Internal traffic
+				// Internal traffic, ignore it
 				return
 			}
-		} else if !a.monitorLAN && srcMac != "" && dstMac != "" {
-			// Fallback to old behavior if no subnets defined (e.g. no interface set)
-			// Ignore purely internal flow based on Neighbor Discovery
+		} else if a.ignoreLAN && srcMac != "" && dstMac != "" {
+			// Fallback to old behavior if no subnets defined
 			return
 		}
 
@@ -711,10 +709,10 @@ func (a *Aggregator) SetInterface(ifaceName string) error {
 	return nil
 }
 
-func (a *Aggregator) SetMonitorLAN(enable bool) {
+func (a *Aggregator) SetIgnoreLAN(ignore bool) {
 	a.mu.Lock()
-	a.monitorLAN = enable
-	a.mu.Unlock()
+	defer a.mu.Unlock()
+	a.ignoreLAN = ignore
 }
 
 // checkFlowInterface returns true if the flow matches the monitored interface

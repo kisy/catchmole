@@ -26,7 +26,7 @@ sudo ./bin/catchmole-amd64 -config catchmole.toml
 ```toml
 listen = ":8080"        # 监听地址
 interface = "eth0"      # 监控接口
-lan = "192.168.1.0/24"  # 局域网网段
+ignore_lan = true     # 是否忽略局域网内部流量(默认为 true, -lan 参数可开启监控)
 interval = 1            # 刷新间隔(秒)
 
 [devices]               # 设备别名

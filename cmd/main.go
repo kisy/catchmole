@@ -20,7 +20,7 @@ import (
 type Config struct {
 	Listen          string            `toml:"listen"`
 	Interface       string            `toml:"interface"`
-	MonitorLAN      bool              `toml:"monitor_lan"`
+	IgnoreLAN       bool              `toml:"ignore_lan"`
 	RefreshInterval int               `toml:"interval"`
 	Devices         map[string]string `toml:"devices"`
 }
@@ -28,17 +28,19 @@ type Config struct {
 func main() {
 	var configFile string
 	var listenAddr string
-	var lanTraffic bool
+	var enableLAN bool
 	var interval int
 
 	flag.StringVar(&configFile, "config", "catchmole.toml", "Path to configuration file")
 	flag.StringVar(&listenAddr, "listen", "", "Server listen address (overrides config)")
-	flag.BoolVar(&lanTraffic, "lan", false, "Enable monitoring of LAN-to-LAN traffic")
+	flag.BoolVar(&enableLAN, "lan", true, "Enable monitoring of LAN-to-LAN traffic")
 	flag.IntVar(&interval, "interval", 0, "Data refresh interval in seconds (default 1)")
 	flag.Parse()
 
 	// Load Config
 	var config Config
+	config.IgnoreLAN = true // Default to true (ignore LAN traffic)
+
 	if _, err := os.Stat(configFile); err == nil {
 		if _, err := toml.DecodeFile(configFile, &config); err != nil {
 			log.Fatalf("Failed to parse config file: %v", err)
@@ -64,8 +66,8 @@ func main() {
 	if config.Listen == "" {
 		config.Listen = ":8080" // Default
 	}
-	if lanTraffic {
-		config.MonitorLAN = true
+	if enableLAN {
+		config.IgnoreLAN = false
 	}
 
 	log.Println("Starting CatchGhost Monitor...")
@@ -91,11 +93,12 @@ func main() {
 			log.Printf("Monitoring specific interface: %s", config.Interface)
 		}
 	}
-	agg.SetMonitorLAN(config.MonitorLAN)
-	if config.MonitorLAN {
-		log.Println("LAN-to-LAN traffic monitoring ENABLED")
-	} else {
+
+	agg.SetIgnoreLAN(config.IgnoreLAN)
+	if config.IgnoreLAN {
 		log.Println("LAN-to-LAN traffic monitoring DISABLED (default)")
+	} else {
+		log.Println("LAN-to-LAN traffic monitoring ENABLED")
 	}
 	agg.SetDeviceNames(config.Devices) // Set static names
 

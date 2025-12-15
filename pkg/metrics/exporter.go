@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// Exporter collects ProBPF stats and exports them as Prometheus metrics
+// Exporter collects CatchMole stats and exports them as Prometheus metrics
 type Exporter struct {
 	agg *stats.Aggregator
 
@@ -69,7 +69,7 @@ func NewExporter(agg *stats.Aggregator) *Exporter {
 		),
 		uptimeSeconds: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "catchmole_uptime_seconds",
-			Help: "ProBPF uptime in seconds",
+			Help: "CatchMole uptime in seconds",
 		}),
 
 		// Initialize delta tracking
