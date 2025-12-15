@@ -34,47 +34,6 @@
         </div>
 
         <div class="header-switches">
-          <select
-            id="ip-provider"
-            name="ip_provider"
-            x-model="ipProvider"
-            @change="setProvider($event.target.value)"
-            style="
-              padding: 2px 24px 2px 8px;
-              font-size: 0.8rem;
-              height: auto;
-              margin-bottom: 0;
-              width: auto;
-              background-position: right 0.5rem center;
-              border-color: var(--pico-muted-border-color);
-            "
-          >
-            <option value="https://ipinfo.io/">ipinfo.io</option>
-            <option value="https://api.ipapi.is/?q=">ipapi.is</option>
-            <option value="https://api.ip.sb/geoip/">ip.sb</option>
-            <option value="https://ipwho.is/">ipwho.is</option>
-            <option value="https://search.censys.io/hosts/">censys.io</option>
-          </select>
-          <label
-            style="
-              margin-bottom: 0;
-              white-space: nowrap;
-              user-select: none;
-              cursor: pointer;
-            "
-          >
-            <input
-              type="checkbox"
-              id="switch-auto-refresh-detail"
-              name="auto_refresh"
-              role="switch"
-              x-model="autoRefresh"
-            />
-            <span
-              x-text="autoRefresh ? 'Auto-Refresh' : 'Paused'"
-              style="font-size: 0.8rem"
-            ></span>
-          </label>
           <label
             style="
               margin-bottom: 0;
@@ -97,6 +56,47 @@
               style="font-size: 0.8rem"
             ></span>
           </label>
+          <label
+            style="
+              margin-bottom: 0;
+              white-space: nowrap;
+              user-select: none;
+              cursor: pointer;
+            "
+          >
+            <input
+              type="checkbox"
+              id="switch-auto-refresh-detail"
+              name="auto_refresh"
+              role="switch"
+              x-model="autoRefresh"
+            />
+            <span
+              x-text="autoRefresh ? 'Auto-Refresh' : 'Paused'"
+              style="font-size: 0.8rem"
+            ></span>
+          </label>
+          <select
+            id="ip-provider"
+            name="ip_provider"
+            x-model="ipProvider"
+            @change="setProvider($event.target.value)"
+            style="
+              padding: 2px 24px 2px 8px;
+              font-size: 0.8rem;
+              height: auto;
+              margin-bottom: 0;
+              width: auto;
+              background-position: right 0.5rem center;
+              border-color: var(--pico-muted-border-color);
+            "
+          >
+            <option value="https://ipinfo.io/">ipinfo.io</option>
+            <option value="https://api.ipapi.is/?q=">ipapi.is</option>
+            <option value="https://api.ip.sb/geoip/">ip.sb</option>
+            <option value="https://ipwho.is/">ipwho.is</option>
+            <option value="https://search.censys.io/hosts/">censys.io</option>
+          </select>
         </div>
 
         <div class="global-stats">

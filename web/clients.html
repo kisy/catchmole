@@ -25,13 +25,13 @@
                     </p>
                 </hgroup>
                 <div class="header-switches">
-                    <label style="margin-bottom: 0; white-space: nowrap; user-select: none; cursor: pointer;">
-                        <input type="checkbox" id="switch-auto-refresh" name="auto_refresh" role="switch" x-model="autoRefresh">
-                        <span x-text="autoRefresh ? 'Auto-Refresh' : 'Paused'" style="font-size: 0.8rem;"></span>
-                    </label>
                     <label style="margin-bottom: 0; white-space: nowrap; user-select: none; cursor: pointer;" title="Toggle Dark/Light Mode">
                         <input type="checkbox" id="switch-theme" name="theme_toggle" role="switch" @click="toggleTheme()" :checked="theme === 'dark'">
                         <span x-text="theme === 'dark' ? 'Dark' : 'Light'" style="font-size: 0.8rem;"></span>
+                    </label>
+                     <label style="margin-bottom: 0; white-space: nowrap; user-select: none; cursor: pointer;">
+                        <input type="checkbox" id="switch-auto-refresh" name="auto_refresh" role="switch" x-model="autoRefresh">
+                        <span x-text="autoRefresh ? 'Auto-Refresh' : 'Paused'" style="font-size: 0.8rem;"></span>
                     </label>
                 </div>
             </div>

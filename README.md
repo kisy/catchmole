@@ -26,11 +26,11 @@ sudo ./bin/catchmole-amd64 -config catchmole.toml
 ```toml
 listen = ":8080"        # 监听地址
 interface = "eth0"      # 监控接口
-ignore_lan = true     # 是否忽略局域网内部流量(默认为 true, -lan 参数可开启监控)
+ignore_lan = true       # 是否忽略局域网内部流量(默认为 true)
 interval = 1            # 刷新间隔(秒)
 
 [devices]               # 设备别名
-"aa:bb:cc:dd:ee:ff" = "My Phone"
+"aa:bb:cc:dd:ee:ff" = "MyPhone"
 ```
 
 ## 📊 Grafana 集成

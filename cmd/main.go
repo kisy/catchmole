@@ -33,7 +33,7 @@ func main() {
 
 	flag.StringVar(&configFile, "config", "catchmole.toml", "Path to configuration file")
 	flag.StringVar(&listenAddr, "listen", "", "Server listen address (overrides config)")
-	flag.BoolVar(&enableLAN, "lan", true, "Enable monitoring of LAN-to-LAN traffic")
+	flag.BoolVar(&enableLAN, "lan", false, "Enable monitoring of LAN-to-LAN traffic")
 	flag.IntVar(&interval, "interval", 0, "Data refresh interval in seconds (default 1)")
 	flag.Parse()
 
