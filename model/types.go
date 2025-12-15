@@ -21,6 +21,10 @@ type ClientStats struct {
 	TotalUploadLast   uint64    `json:"-"`
 	TotalDownloadLast uint64    `json:"-"`
 	LastSpeedCalc     time.Time `json:"-"`
+
+	// Active Connection Smoothing
+	SmoothedActiveConns float64 `json:"-"`
+	RawActiveConns      uint64  `json:"-"`
 }
 
 type FlowDetail struct {

@@ -22,6 +22,7 @@ type Aggregator struct {
 
 	globalTotalDownload uint64
 	globalTotalUpload   uint64
+	globalSmoothedConns float64
 
 	startTime time.Time
 
@@ -299,7 +300,7 @@ func (a *Aggregator) GetGlobalStats() model.GlobalStats {
 		TotalUpload:       a.globalTotalUpload,
 		DownloadSpeed:     dlSpeed,
 		UploadSpeed:       ulSpeed,
-		ActiveConnections: conns,
+		ActiveConnections: uint64(a.globalSmoothedConns + 0.5),
 	}
 }
 
@@ -399,8 +400,9 @@ func (a *Aggregator) calculateSpeedStats() {
 	now := time.Now()
 	// seconds := now.Sub(a.lastCalcTime).Seconds() // Need state?
 
-	// Reset current speeds for all clients
+	// 1. Reset current raw counts for all clients
 	for _, c := range a.clients {
+		c.RawActiveConns = 0
 		// Calculate Speed
 		duration := now.Sub(c.LastSpeedCalc)
 		if duration.Seconds() >= 1 {
@@ -410,17 +412,11 @@ func (a *Aggregator) calculateSpeedStats() {
 			c.TotalUploadLast = c.TotalUpload
 			c.TotalDownloadLast = c.TotalDownload
 			c.LastSpeedCalc = now
-
-			// Active Connections - reset and recount?
-			// Actually active connections are hard to count perfectly without scanning flows.
-			// Let's scan flows.
-			c.ActiveConnections = 0
 		}
 	}
 
-	// Recount active connections from flows
-	// Also could clean up expired flows here?
-
+	// 2. Count Active Connections (Raw)
+	var globalRawActiveCount uint64
 	for key, f := range a.flows {
 		// Cleanup Timeout (e.g. 60s)
 		if now.Sub(f.LastSeen) > 60*time.Second {
@@ -428,16 +424,40 @@ func (a *Aggregator) calculateSpeedStats() {
 			continue
 		}
 
-		// Count Active Connections
+		globalRawActiveCount++
+
 		srcMac := a.nw.GetMAC(f.SrcIP)
 		dstMac := a.nw.GetMAC(f.DstIP)
 
 		if c, ok := a.clients[srcMac]; ok {
-			c.ActiveConnections++
+			c.RawActiveConns++
 		}
 		if c, ok := a.clients[dstMac]; ok {
-			c.ActiveConnections++
+			c.RawActiveConns++
 		}
+	}
+
+	// 3. Apply Smoothing (EMA)
+	// Alpha factor (0 < alpha <= 1). smaller = smoother.
+	// Using 0.2 for "Industry Standard" like variance reduction
+	const alpha = 0.2
+
+	for _, c := range a.clients {
+		// Initial: if 0, may be startup.
+		// To avoid "slow ramp up" from 0, if Smoothed is 0, we can seed it with Raw.
+		if c.SmoothedActiveConns == 0 && c.RawActiveConns > 0 {
+			c.SmoothedActiveConns = float64(c.RawActiveConns)
+		} else {
+			c.SmoothedActiveConns = (alpha * float64(c.RawActiveConns)) + ((1 - alpha) * c.SmoothedActiveConns)
+		}
+		c.ActiveConnections = uint64(c.SmoothedActiveConns + 0.5) // Round
+	}
+
+	// Global Smoothing
+	if a.globalSmoothedConns == 0 && globalRawActiveCount > 0 {
+		a.globalSmoothedConns = float64(globalRawActiveCount)
+	} else {
+		a.globalSmoothedConns = (alpha * float64(globalRawActiveCount)) + ((1 - alpha) * a.globalSmoothedConns)
 	}
 }
 
