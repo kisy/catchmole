@@ -1,6 +1,6 @@
 # CatchMole
 
-CatchMole 是一个高性能的局域网流量监控工具，基于 eBPF/Netlink 技术，提供设备级流量统计和连接追踪。
+CatchMole 是一个路由器流量监控工具，基于 conntrack，提供设备级流量统计和连接追踪。
 
 ## 🚀 快速开始
 
@@ -16,36 +16,16 @@ cd catchmole
 
 ```bash
 # 需要 root 权限
-sudo ./bin/catchmole-amd64 -config catchmole.toml
+sudo ./bin/catchmole-amd64 -c catchmole.toml
 ```
 
-访问 Web UI: `http://<ip>:8080`
-访问 Web UI: `http://<ip>:8080`
-
-### 3. Systemd 部署 (非 Root 用户)
-
-CatchMole 支持以普通用户身份运行，只需授予 `CAP_NET_ADMIN` 权限。
-
-1. 修改 `catchmole.service` 中的 `User`, `Group`, `WorkingDirectory` 和 `ExecStart` 路径。
-2. 安装服务：
-
-```bash
-sudo cp catchmole.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now catchmole
-```
-
-**注意**: `AmbientCapabilities=CAP_NET_ADMIN` 是必须的，它允许以非 root 用户监听 Conntrack 事件。
+访问 Web UI: `http://<ip>:8080/clients`
 
 ## ⚠️ 重要说明
 
 CatchMole 基于 Linux conntrack 进行流量统计。某些硬件上 可能会因为硬件分流（Hardware Flow Offload）而统计不准确。
 
-### 常见问题：有连接但无流量数据
-
-如果程序运行正常（Web UI 可访问），能看到连接数但**所有流量显示为 0**，可能是因为 Linux 内核未开启 Conntrack 流量统计功能。
-
-解决方法：
+开启 conntrack 统计：
 
 ```bash
 sudo sysctl -w net.netfilter.nf_conntrack_acct=1
@@ -57,7 +37,7 @@ sudo sysctl -w net.netfilter.nf_conntrack_acct=1
 
 ```toml
 listen = ":8080"        # 监听地址
-interface = "eth0"      # 监控接口
+interface = "br-lan"    # 监控接口
 ignore_lan = true       # 是否忽略局域网内部流量(默认为 true)
 interval = 1            # 刷新间隔(秒)
 flow_ttl = 60           # 流量记录缓存时间(秒)
