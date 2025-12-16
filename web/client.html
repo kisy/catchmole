@@ -195,7 +195,7 @@
             class="ip-toggle-btn"
             x-show="uniqueIPs.length > 1"
             @click="expanded = !expanded"
-            x-text="expanded ? 'Show Less' : 'Show More (' + (uniqueIPs.length - 1) + ' more)'"
+            x-text="expanded ? 'Show Less' : (uniqueIPs.length - 1) + ' more'"
           ></button>
         </div>
         <span
