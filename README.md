@@ -25,6 +25,18 @@ sudo ./bin/catchmole-amd64 -config catchmole.toml
 
 CatchMole 基于 Linux conntrack 进行流量统计。某些硬件上 可能会因为硬件分流（Hardware Flow Offload）而统计不准确。
 
+### 常见问题：有连接但无流量数据
+
+如果程序运行正常（Web UI 可访问），能看到连接数但**所有流量显示为 0**，可能是因为 Linux 内核未开启 Conntrack 流量统计功能。
+
+解决方法：
+
+```bash
+sudo sysctl -w net.netfilter.nf_conntrack_acct=1
+```
+
+要永久生效，请在 `/etc/sysctl.conf` 中添加 `net.netfilter.nf_conntrack_acct=1`。
+
 ## ⚙️ 配置 (catchmole.toml)
 
 ```toml

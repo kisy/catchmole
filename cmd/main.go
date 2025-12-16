@@ -31,10 +31,12 @@ func main() {
 	var listenAddr string
 	var enableLAN bool
 	var interval int
+	var ifaceName string
 	var flowTTL int
 
-	flag.StringVar(&configFile, "config", "catchmole.toml", "Path to configuration file")
-	flag.StringVar(&listenAddr, "listen", "", "Server listen address (overrides config)")
+	flag.StringVar(&configFile, "c", "config.toml", "Path to configuration file")
+	flag.StringVar(&ifaceName, "i", "", "Interface to monitor")
+	flag.StringVar(&listenAddr, "s", "", "Server listen address (overrides config)")
 	flag.BoolVar(&enableLAN, "lan", false, "Enable monitoring of LAN-to-LAN traffic")
 	flag.IntVar(&interval, "interval", 0, "Data refresh interval in seconds (default 1)")
 	flag.IntVar(&flowTTL, "flow-ttl", 0, "Flow cache TTL in seconds (default 60)")
@@ -49,7 +51,7 @@ func main() {
 			log.Fatalf("Failed to parse config file: %v", err)
 		}
 		log.Printf("Loaded config from %s", configFile)
-	} else if os.IsNotExist(err) && configFile != "catchghost.toml" {
+	} else if os.IsNotExist(err) && configFile != "config.toml" {
 		// Only error if user explicitly provided a config file that doesn't exist
 		log.Fatalf("Config file not found: %s", configFile)
 	}
@@ -63,6 +65,9 @@ func main() {
 	}
 	if flowTTL > 0 {
 		config.FlowTTL = flowTTL
+	}
+	if ifaceName != "" {
+		config.Interface = ifaceName
 	}
 
 	// Default interval
