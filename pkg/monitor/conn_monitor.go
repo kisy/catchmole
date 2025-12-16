@@ -187,9 +187,6 @@ func (m *ConntrackMonitor) processEvent(ev conntrack.Event) {
 		deltaReply = 0
 	} else {
 		// Calculate Delta (both Listen and Poll events handled the same way)
-		lastOrig := last.LastOriginBytes
-		// lastReply := last.LastReplyBytes // Not strictly needed for log but good for symmetry if needed
-
 		// Check Origin Counters
 		if curOrig >= last.LastOriginBytes {
 			deltaOrig = curOrig - last.LastOriginBytes
@@ -202,10 +199,9 @@ func (m *ConntrackMonitor) processEvent(ev conntrack.Event) {
 				// Cur=0 suggests a glitch (e.g. software offload artifact) rather than a true reuse
 				// Do NOT reset last.LastOriginBytes to 0, otherwise the next valid update
 				// will cause a massive fake delta (repeating the cumulative total).
-				log.Printf("[WARN] FlowID=%d Orig Glitch: last=%d cur=0 (Ignoring reset)", fid, last.LastOriginBytes)
+				// Log removed to reduce noise
 			} else {
 				// Cur > 0 but < Last: Likely a true FlowID reuse with a new connection
-				log.Printf("[WARN] FlowID=%d Orig Reset: last=%d cur=%d", fid, last.LastOriginBytes, curOrig)
 				last.LastOriginBytes = curOrig
 			}
 		}
@@ -220,19 +216,11 @@ func (m *ConntrackMonitor) processEvent(ev conntrack.Event) {
 			deltaReply = 0
 			if curReply == 0 {
 				// Cur=0 suggests a glitch
-				log.Printf("[WARN] FlowID=%d Reply Glitch: last=%d cur=0 (Ignoring reset)", fid, last.LastReplyBytes)
+				// Log removed to reduce noise
 			} else {
 				// Cur > 0 but < Last: Likely true reuse
-				log.Printf("[WARN] FlowID=%d Reply Reset: last=%d cur=%d", fid, last.LastReplyBytes, curReply)
 				last.LastReplyBytes = curReply
 			}
-		}
-
-		// DIAGNOSTIC LOGGING: specifically for "double counting" investigation
-		// Log if it's a DESTROY event OR if Delta is significant
-		if eventType == EventDestroy || deltaOrig > 50000 || deltaReply > 50000 {
-			log.Printf("[DIAG] FlowID=%d Type=%v Delta=%d/%d (Cur=%d/%d LastOrig=%d)",
-				fid, eventType, deltaOrig, deltaReply, curOrig, curReply, lastOrig)
 		}
 	}
 
@@ -246,14 +234,6 @@ func (m *ConntrackMonitor) processEvent(ev conntrack.Event) {
 	if deltaOrig == 0 && deltaReply == 0 {
 		return
 	}
-
-	// DEBUG: Log delta values to help diagnose issues
-	eventTypeStr := "UPDATE"
-	if eventType == EventDestroy {
-		eventTypeStr = "DESTROY"
-	}
-	log.Printf("[DEBUG] FlowID=%d Type=%s Delta: Orig=%d Reply=%d (Cur: Orig=%d Reply=%d, Exists=%v, StateSize=%d)",
-		fid, eventTypeStr, deltaOrig, deltaReply, curOrig, curReply, exists, len(m.lastState))
 
 	// Prepare event with DELTA values (not cumulative)
 	srcSlice := ev.Flow.TupleOrig.IP.SourceAddress.AsSlice()
