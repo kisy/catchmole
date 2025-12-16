@@ -1,0 +1,17 @@
+[Unit]
+Description=CatchMole Traffic Monitor
+After=network.target
+
+[Service]
+Type=simple
+User=your_user
+Group=your_group
+# granting CAP_NET_ADMIN is required for monitoring conntrack events
+AmbientCapabilities=CAP_NET_ADMIN
+WorkingDirectory=/path/to/catchmole
+ExecStart=/path/to/catchmole/bin/catchmole-amd64 -config catchmole.toml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

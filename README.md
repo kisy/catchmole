@@ -20,6 +20,22 @@ sudo ./bin/catchmole-amd64 -config catchmole.toml
 ```
 
 访问 Web UI: `http://<ip>:8080`
+访问 Web UI: `http://<ip>:8080`
+
+### 3. Systemd 部署 (非 Root 用户)
+
+CatchMole 支持以普通用户身份运行，只需授予 `CAP_NET_ADMIN` 权限。
+
+1. 修改 `catchmole.service` 中的 `User`, `Group`, `WorkingDirectory` 和 `ExecStart` 路径。
+2. 安装服务：
+
+```bash
+sudo cp catchmole.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now catchmole
+```
+
+**注意**: `AmbientCapabilities=CAP_NET_ADMIN` 是必须的，它允许以非 root 用户监听 Conntrack 事件。
 
 ## ⚠️ 重要说明
 
