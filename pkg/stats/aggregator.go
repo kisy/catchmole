@@ -626,7 +626,7 @@ func (a *Aggregator) GetFlowsByMAC(mac string) ([]model.FlowDetail, int, []strin
 			DownloadSpeed:     v.DownloadSpeed,
 			UploadSpeed:       v.UploadSpeed,
 			ActiveConnections: uint64(v.ActiveConns),
-			Duration:          uint64(time.Since(v.FirstSeen).Seconds()),
+			Duration:          uint64(v.LastSeen.Sub(v.FirstSeen).Seconds()),
 		})
 		totalActiveConns += v.ActiveConns
 	}
