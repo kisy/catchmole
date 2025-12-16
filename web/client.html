@@ -101,6 +101,13 @@
 
         <div class="global-stats">
           <div class="stat-box">
+            <div style="font-size: 0.7rem">Flows</div>
+            <div
+              style="font-size: 1.5rem; font-weight: bold"
+              x-text="flows.length || 0"
+            ></div>
+          </div>
+          <div class="stat-box">
             <div style="font-size: 0.7rem">Conns</div>
             <div
               style="font-size: 1.5rem; font-weight: bold"
@@ -297,7 +304,7 @@
             value="active_connections:desc"
             :selected="sortBy=='active_connections' && sortDesc"
           >
-            Conn
+            Conns
           </option>
           <option
             value="duration:desc"
@@ -360,7 +367,7 @@
                 @click="setSort('active_connections')"
                 :class="{'active': sortBy=='active_connections', 'sort-asc': !sortDesc, 'sort-desc': sortDesc}"
               >
-                Conn
+                Conns
               </th>
               <th
                 @click="setSort('duration')"
@@ -447,7 +454,7 @@
                   </div>
                 </td>
                 <td data-label="Port" x-text="f.remote_port"></td>
-                <td data-label="Conn" x-text="f.active_connections"></td>
+                <td data-label="Conns" x-text="f.active_connections"></td>
                 <td
                   data-label="Duration"
                   x-text="formatDuration(f.duration)"
