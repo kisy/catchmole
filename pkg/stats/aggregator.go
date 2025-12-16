@@ -34,6 +34,9 @@ type Aggregator struct {
 	interfaceName  string
 	interfaceIndex int
 	lanSubnets     []net.IPNet // Subnets of the monitored interface
+
+	// Config
+	flowTTL time.Duration
 }
 
 type FlowTracker struct {
@@ -77,6 +80,7 @@ func NewAggregator(mon *monitor.ConntrackMonitor, nw *monitor.NeighborWatcher) *
 		flows:       make(map[string]*FlowTracker),
 		startTime:   time.Now(),
 		staticNames: make(map[string]string),
+		flowTTL:     60 * time.Second, // Default
 	}
 }
 
@@ -355,6 +359,12 @@ func (a *Aggregator) refreshSubnets() {
 	a.mu.Unlock()
 }
 
+func (a *Aggregator) SetFlowTTL(ttl time.Duration) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.flowTTL = ttl
+}
+
 func (a *Aggregator) calculateSpeedStats() {
 	// Re-implemented speed calc logic here or use the old logic?
 	// The new updateStats at line 459 was wiping everything? That looks wrong/placeholder.
@@ -394,8 +404,12 @@ func (a *Aggregator) calculateSpeedStats() {
 	// 2. Count Active Connections (Raw)
 	var globalRawActiveCount uint64
 	for key, f := range a.flows {
-		// Cleanup Timeout (e.g. 60s)
-		if now.Sub(f.LastSeen) > 60*time.Second {
+		// Cleanup Timeout (use Configured TTL)
+		ttl := a.flowTTL
+		if ttl <= 0 {
+			ttl = 60 * time.Second
+		}
+		if now.Sub(f.LastSeen) > ttl {
 			delete(a.flows, key)
 			continue
 		}

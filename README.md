@@ -32,6 +32,7 @@ listen = ":8080"        # 监听地址
 interface = "eth0"      # 监控接口
 ignore_lan = true       # 是否忽略局域网内部流量(默认为 true)
 interval = 1            # 刷新间隔(秒)
+flow_ttl = 60           # 流量记录缓存时间(秒)
 
 [devices]               # 设备别名
 "aa:bb:cc:dd:ee:ff" = "MyPhone"

@@ -22,6 +22,7 @@ type Config struct {
 	Interface       string            `toml:"interface"`
 	IgnoreLAN       bool              `toml:"ignore_lan"`
 	RefreshInterval int               `toml:"interval"`
+	FlowTTL         int               `toml:"flow_ttl"`
 	Devices         map[string]string `toml:"devices"`
 }
 
@@ -30,11 +31,13 @@ func main() {
 	var listenAddr string
 	var enableLAN bool
 	var interval int
+	var flowTTL int
 
 	flag.StringVar(&configFile, "config", "catchmole.toml", "Path to configuration file")
 	flag.StringVar(&listenAddr, "listen", "", "Server listen address (overrides config)")
 	flag.BoolVar(&enableLAN, "lan", false, "Enable monitoring of LAN-to-LAN traffic")
 	flag.IntVar(&interval, "interval", 0, "Data refresh interval in seconds (default 1)")
+	flag.IntVar(&flowTTL, "flow-ttl", 0, "Flow cache TTL in seconds (default 60)")
 	flag.Parse()
 
 	// Load Config
@@ -58,9 +61,17 @@ func main() {
 	if interval > 0 {
 		config.RefreshInterval = interval
 	}
+	if flowTTL > 0 {
+		config.FlowTTL = flowTTL
+	}
+
 	// Default interval
 	if config.RefreshInterval <= 0 {
 		config.RefreshInterval = 1
+	}
+	// Default TTL
+	if config.FlowTTL <= 0 {
+		config.FlowTTL = 60
 	}
 
 	if config.Listen == "" {
@@ -101,6 +112,8 @@ func main() {
 		log.Println("LAN-to-LAN traffic monitoring ENABLED")
 	}
 	agg.SetDeviceNames(config.Devices) // Set static names
+	agg.SetFlowTTL(time.Duration(config.FlowTTL) * time.Second)
+	log.Printf("Flow cache TTL: %d seconds", config.FlowTTL)
 
 	log.Printf("Starting Aggregator with refresh interval: %d seconds", config.RefreshInterval)
 	agg.Start(time.Duration(config.RefreshInterval) * time.Second)
