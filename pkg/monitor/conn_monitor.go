@@ -187,25 +187,53 @@ func (m *ConntrackMonitor) processEvent(ev conntrack.Event) {
 		deltaReply = 0
 	} else {
 		// Calculate Delta (both Listen and Poll events handled the same way)
+		lastOrig := last.LastOriginBytes
+		// lastReply := last.LastReplyBytes // Not strictly needed for log but good for symmetry if needed
+
+		// Check Origin Counters
 		if curOrig >= last.LastOriginBytes {
 			deltaOrig = curOrig - last.LastOriginBytes
+			// Valid growth, update state
+			last.LastOriginBytes = curOrig
 		} else {
-			// Counter decreased: likely FlowID reuse or conntrack anomaly
-			// Set Delta=0 to avoid counting cumulative value as increment
+			// Counter decreased (Reset)
 			deltaOrig = 0
+			if curOrig == 0 {
+				// Cur=0 suggests a glitch (e.g. software offload artifact) rather than a true reuse
+				// Do NOT reset last.LastOriginBytes to 0, otherwise the next valid update
+				// will cause a massive fake delta (repeating the cumulative total).
+				log.Printf("[WARN] FlowID=%d Orig Glitch: last=%d cur=0 (Ignoring reset)", fid, last.LastOriginBytes)
+			} else {
+				// Cur > 0 but < Last: Likely a true FlowID reuse with a new connection
+				log.Printf("[WARN] FlowID=%d Orig Reset: last=%d cur=%d", fid, last.LastOriginBytes, curOrig)
+				last.LastOriginBytes = curOrig
+			}
 		}
 
+		// Check Reply Counters
 		if curReply >= last.LastReplyBytes {
 			deltaReply = curReply - last.LastReplyBytes
+			// Valid growth, update state
+			last.LastReplyBytes = curReply
 		} else {
-			// Counter decreased: likely FlowID reuse or conntrack anomaly
-			// Set Delta=0 to avoid counting cumulative value as increment
+			// Counter decreased (Reset)
 			deltaReply = 0
+			if curReply == 0 {
+				// Cur=0 suggests a glitch
+				log.Printf("[WARN] FlowID=%d Reply Glitch: last=%d cur=0 (Ignoring reset)", fid, last.LastReplyBytes)
+			} else {
+				// Cur > 0 but < Last: Likely true reuse
+				log.Printf("[WARN] FlowID=%d Reply Reset: last=%d cur=%d", fid, last.LastReplyBytes, curReply)
+				last.LastReplyBytes = curReply
+			}
 		}
 
-		// Update state
-		last.LastOriginBytes = curOrig
-		last.LastReplyBytes = curReply
+		// DIAGNOSTIC LOGGING: specifically for "double counting" investigation
+		// Log if it's a DESTROY event OR if Delta is significant
+		if eventType == EventDestroy || deltaOrig > 50000 || deltaReply > 50000 {
+			log.Printf("[DIAG] FlowID=%d Type=%v Delta=%d/%d (Cur=%d/%d LastOrig=%d)",
+				fid, eventType, deltaOrig, deltaReply, curOrig, curReply, lastOrig)
+		}
 	}
 
 	// For Destroy events, remove from state
