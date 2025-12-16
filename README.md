@@ -21,6 +21,10 @@ sudo ./bin/catchmole-amd64 -config catchmole.toml
 
 访问 Web UI: `http://<ip>:8080`
 
+## ⚠️ 重要说明
+
+CatchMole 基于 Linux conntrack 进行流量统计。某些硬件上 可能会因为硬件分流（Hardware Flow Offload）而统计不准确。
+
 ## ⚙️ 配置 (catchmole.toml)
 
 ```toml

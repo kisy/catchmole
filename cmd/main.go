@@ -79,7 +79,7 @@ func main() {
 
 	// 2. Initialize Conntrack Monitor
 	mon := monitor.NewConntrackMonitor(nw)
-	if err := mon.Start(); err != nil {
+	if err := mon.Start(time.Duration(config.RefreshInterval) * time.Second); err != nil {
 		log.Fatalf("Failed to start Conntrack monitor: %v", err)
 	}
 	defer mon.Stop()

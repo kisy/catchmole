@@ -39,25 +39,35 @@ const (
 	EventDestroy
 )
 
+type flowState struct {
+	LastOriginBytes uint64
+	LastReplyBytes  uint64
+}
+
 type ConntrackMonitor struct {
 	nw     *NeighborWatcher
 	output chan FlowEvent
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	// 状态差分机制
+	mu        sync.Mutex
+	lastState map[uint32]*flowState // Key: FlowID
 }
 
 func NewConntrackMonitor(nw *NeighborWatcher) *ConntrackMonitor {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ConntrackMonitor{
-		nw:     nw,
-		output: make(chan FlowEvent, 1024),
-		ctx:    ctx,
-		cancel: cancel,
+		nw:        nw,
+		output:    make(chan FlowEvent, 1024),
+		ctx:       ctx,
+		cancel:    cancel,
+		lastState: make(map[uint32]*flowState),
 	}
 }
 
-func (m *ConntrackMonitor) Start() error {
+func (m *ConntrackMonitor) Start(pollInterval time.Duration) error {
 	c, err := conntrack.Dial(nil)
 	if err != nil {
 		return fmt.Errorf("failed to dial conntrack: %w", err)
@@ -92,7 +102,11 @@ func (m *ConntrackMonitor) Start() error {
 		defer pc.Close()
 
 		// Polling Ticker
-		ticker := time.NewTicker(1 * time.Second)
+		// Use configured interval
+		if pollInterval <= 0 {
+			pollInterval = 1 * time.Second // Default
+		}
+		ticker := time.NewTicker(pollInterval)
 		defer ticker.Stop()
 
 		for {
@@ -147,24 +161,73 @@ func (m *ConntrackMonitor) Events() <-chan FlowEvent {
 }
 
 func (m *ConntrackMonitor) processEvent(ev conntrack.Event) {
-	// We are mainly interested in byte counts.
-	// Allow IPv4 and IPv6
-	// New events have 0 counters usually.
-	// Update and Destroy have generic counters.
-
-	// Extract check counters
-	originBytes := ev.Flow.CountersOrig.Bytes
-	replyBytes := ev.Flow.CountersReply.Bytes
+	// Extract counters
+	fid := ev.Flow.ID
+	curOrig := ev.Flow.CountersOrig.Bytes
+	curReply := ev.Flow.CountersReply.Bytes
 
 	eventType := EventUpdate
 	if ev.Type == conntrack.EventDestroy {
 		eventType = EventDestroy
 	}
 
-	// Filter out non-traffic events if needed, but we want updates for stats.
+	// Status Differential Calculation
+	m.mu.Lock()
+	last, exists := m.lastState[fid]
 
-	// Filter out non-traffic events if needed, but we want updates for stats.
+	var deltaOrig, deltaReply uint64
+	if !exists {
+		// First time seeing this FlowID: Conservative strategy, Delta = 0
+		// This avoids false spikes on program restart
+		m.lastState[fid] = &flowState{
+			LastOriginBytes: curOrig,
+			LastReplyBytes:  curReply,
+		}
+		deltaOrig = 0
+		deltaReply = 0
+	} else {
+		// Calculate Delta (both Listen and Poll events handled the same way)
+		if curOrig >= last.LastOriginBytes {
+			deltaOrig = curOrig - last.LastOriginBytes
+		} else {
+			// Counter decreased: likely FlowID reuse or conntrack anomaly
+			// Set Delta=0 to avoid counting cumulative value as increment
+			deltaOrig = 0
+		}
 
+		if curReply >= last.LastReplyBytes {
+			deltaReply = curReply - last.LastReplyBytes
+		} else {
+			// Counter decreased: likely FlowID reuse or conntrack anomaly
+			// Set Delta=0 to avoid counting cumulative value as increment
+			deltaReply = 0
+		}
+
+		// Update state
+		last.LastOriginBytes = curOrig
+		last.LastReplyBytes = curReply
+	}
+
+	// For Destroy events, remove from state
+	if eventType == EventDestroy {
+		delete(m.lastState, fid)
+	}
+	m.mu.Unlock()
+
+	// Only send event if there's actual data change
+	if deltaOrig == 0 && deltaReply == 0 {
+		return
+	}
+
+	// DEBUG: Log delta values to help diagnose issues
+	eventTypeStr := "UPDATE"
+	if eventType == EventDestroy {
+		eventTypeStr = "DESTROY"
+	}
+	log.Printf("[DEBUG] FlowID=%d Type=%s Delta: Orig=%d Reply=%d (Cur: Orig=%d Reply=%d, Exists=%v, StateSize=%d)",
+		fid, eventTypeStr, deltaOrig, deltaReply, curOrig, curReply, exists, len(m.lastState))
+
+	// Prepare event with DELTA values (not cumulative)
 	srcSlice := ev.Flow.TupleOrig.IP.SourceAddress.AsSlice()
 	dstSlice := ev.Flow.TupleOrig.IP.DestinationAddress.AsSlice()
 
@@ -174,9 +237,9 @@ func (m *ConntrackMonitor) processEvent(ev conntrack.Event) {
 		SrcPort:     ev.Flow.TupleOrig.Proto.SourcePort,
 		DstPort:     ev.Flow.TupleOrig.Proto.DestinationPort,
 		Proto:       ev.Flow.TupleOrig.Proto.Protocol,
-		OriginBytes: originBytes,
-		ReplyBytes:  replyBytes,
-		FlowID:      ev.Flow.ID,
+		OriginBytes: deltaOrig,  // DELTA, not cumulative
+		ReplyBytes:  deltaReply, // DELTA, not cumulative
+		FlowID:      fid,
 		Timestamp:   time.Now(),
 		Type:        eventType,
 	}

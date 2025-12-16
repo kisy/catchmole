@@ -33,8 +33,7 @@ type Aggregator struct {
 	// Interface Filtering
 	interfaceName  string
 	interfaceIndex int
-	ipIfCache      map[string]int // IP string -> Interface Index
-	lanSubnets     []net.IPNet    // Subnets of the monitored interface
+	lanSubnets     []net.IPNet // Subnets of the monitored interface
 }
 
 type FlowTracker struct {
@@ -52,14 +51,22 @@ type FlowTracker struct {
 	ClientMAC string // Associated MAC (if any)
 	Direction string // "upload" (client is src) or "download" (client is dst)
 
-	OriginBytesLast uint64
-	ReplyBytesLast  uint64
+	// Removed: OriginBytesLast, ReplyBytesLast
+	// Delta calculation now happens in monitor layer
 
 	TotalOriginBytes uint64 // Cumulative
 	TotalReplyBytes  uint64 // Cumulative
 
 	SessionStartOriginBytes uint64
 	SessionStartReplyBytes  uint64
+
+	// Speed Calculation
+	OrigSpeed  uint64
+	ReplySpeed uint64
+
+	SpeedTotalOriginLast uint64
+	SpeedTotalReplyLast  uint64
+	SpeedLastCalc        time.Time
 }
 
 func NewAggregator(mon *monitor.ConntrackMonitor, nw *monitor.NeighborWatcher) *Aggregator {
@@ -70,7 +77,6 @@ func NewAggregator(mon *monitor.ConntrackMonitor, nw *monitor.NeighborWatcher) *
 		flows:       make(map[string]*FlowTracker),
 		startTime:   time.Now(),
 		staticNames: make(map[string]string),
-		ipIfCache:   make(map[string]int),
 	}
 }
 
@@ -87,14 +93,14 @@ func (a *Aggregator) handleEvent(ev monitor.FlowEvent) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	// Interface Filter
-	if a.interfaceIndex != 0 {
-		if !a.checkFlowInterface(ev.SrcIP, ev.DstIP) {
+	// 1. Interface Filter (Subnet Based)
+	if a.interfaceName != "" {
+		if !a.checkFlowSubnet(ev.SrcIP, ev.DstIP) {
 			return
 		}
 	}
 
-	// Filter Multicast/Broadcast (Global IP Filter)
+	// Filter Multicast/Broadcast
 	if ev.DstIP.IsMulticast() {
 		return
 	}
@@ -104,23 +110,11 @@ func (a *Aggregator) handleEvent(ev monitor.FlowEvent) {
 
 	ft, exists := a.flows[key]
 
-	if ev.Type == monitor.EventDestroy {
-		if exists {
-			// Final update
-			deltaOrig := safeSub(ev.OriginBytes, ft.OriginBytesLast)
-			deltaReply := safeSub(ev.ReplyBytes, ft.ReplyBytesLast)
-			a.updateStats(ft, deltaOrig, deltaReply)
-			// Remove flow
-			delete(a.flows, key)
-		}
-		return
-	}
-
 	if !exists {
+		// New Flow Initialization
 		srcIP := ev.SrcIP.String()
 		dstIP := ev.DstIP.String()
 
-		// Determine ownership
 		srcMac := a.nw.GetMAC(srcIP)
 		dstMac := a.nw.GetMAC(dstIP)
 
@@ -129,86 +123,64 @@ func (a *Aggregator) handleEvent(ev monitor.FlowEvent) {
 			srcInSubnet := false
 			dstInSubnet := false
 
-			for _, netParams := range a.lanSubnets {
-				if netParams.Contains(ev.SrcIP) {
+			for _, sn := range a.lanSubnets {
+				if sn.Contains(ev.SrcIP) {
 					srcInSubnet = true
 				}
-				if netParams.Contains(ev.DstIP) {
+				if sn.Contains(ev.DstIP) {
 					dstInSubnet = true
 				}
 			}
 
 			if srcInSubnet && dstInSubnet {
-				// Internal traffic, ignore it
+				// Internal traffic, ignore
 				return
 			}
 		} else if a.ignoreLAN && srcMac != "" && dstMac != "" {
-			// Fallback to old behavior if no subnets defined
+			// Fallback (MAC based check)
 			return
 		}
 
 		ft = &FlowTracker{
-			Key:             key,
-			FlowID:          ev.FlowID,
-			FirstSeen:       time.Now(),
-			LastSeen:        time.Now(),
-			SrcIP:           srcIP,
-			DstIP:           dstIP,
-			SrcPort:         ev.SrcPort,
-			DstPort:         ev.DstPort,
-			Proto:           ev.Proto,
-			OriginBytesLast: ev.OriginBytes,
-			ReplyBytesLast:  ev.ReplyBytes,
-			// SessionStart default 0: Session = Total - 0 = Total. Correct.
+			Key:       key,
+			FlowID:    ev.FlowID,
+			FirstSeen: time.Now(),
+			LastSeen:  time.Now(),
+			SrcIP:     srcIP,
+			DstIP:     dstIP,
+			SrcPort:   ev.SrcPort,
+			DstPort:   ev.DstPort,
+			Proto:     ev.Proto,
 		}
 		a.flows[key] = ft
-	} else {
-		// Existing flow key. Check ID.
-		if ft.FlowID != ev.FlowID {
-			// ID Changed -> Flow Reused/Reset!
-			ft.FlowID = ev.FlowID
-			ft.OriginBytesLast = 0
-			ft.ReplyBytesLast = 0
-			ft.FirstSeen = time.Now() // Reset start time for the new flow
-			// Reset tracking for new flow
-		}
+		// Note: Monitor sends Delta=0 for first seen flows, so no data accumulated here
 	}
 
+	// Update existing flow
 	ft.LastSeen = time.Now()
 
-	// Calculate deltas
-	// strict increasing check
+	// Note: ev.OriginBytes and ev.ReplyBytes are now DELTA values from monitor layer
+	// No need to calculate delta here, just accumulate
+	deltaOrig := ev.OriginBytes
+	deltaReply := ev.ReplyBytes
 
-	var deltaOrig, deltaReply uint64
+	// Safety Cap: If delta is unreasonably large (> 1GB), it's likely an error
+	const SafeCap = 1 * 1024 * 1024 * 1024 // 1GB
 
-	// If New < Old, and ID matches: It's Jitter/Out-of-Order. IGNORE.
-	if ev.OriginBytes < ft.OriginBytesLast {
-		// Ignore
+	if deltaOrig > SafeCap {
+		// log.Printf("[WARN] Huge Origin Delta detected: %d (Flow %d). Ignoring.", deltaOrig, ft.FlowID)
 		deltaOrig = 0
-	} else {
-		deltaOrig = ev.OriginBytes - ft.OriginBytesLast
-		ft.OriginBytesLast = ev.OriginBytes
 	}
-
-	if ev.ReplyBytes < ft.ReplyBytesLast {
-		// Ignore
+	if deltaReply > SafeCap {
+		// log.Printf("[WARN] Huge Reply Delta detected: %d (Flow %d). Ignoring.", deltaReply, ft.FlowID)
 		deltaReply = 0
-	} else {
-		deltaReply = ev.ReplyBytes - ft.ReplyBytesLast
-		ft.ReplyBytesLast = ev.ReplyBytes
 	}
 
+	// Accumulate totals
 	ft.TotalOriginBytes += deltaOrig
 	ft.TotalReplyBytes += deltaReply
 
 	a.updateStats(ft, deltaOrig, deltaReply)
-}
-
-func safeSub(a, b uint64) uint64 {
-	if a >= b {
-		return a - b
-	}
-	return a // It reset or wrapped
 }
 
 func (a *Aggregator) updateStats(ft *FlowTracker, deltaOrig, deltaReply uint64) {
@@ -351,12 +323,7 @@ func (a *Aggregator) cleanupAndCalculate(interval time.Duration) {
 		// 2. Refresh Subnets (No cache)
 		a.refreshSubnets()
 
-		// 3. Clear Route Cache (No cache)
-		a.mu.Lock()
-		a.ipIfCache = make(map[string]int) // Clear cache
-		a.mu.Unlock()
-
-		// 4. Calculate Stats
+		// 3. Calculate Stats
 		a.calculateSpeedStats()
 	}
 }
@@ -404,10 +371,19 @@ func (a *Aggregator) calculateSpeedStats() {
 	for _, c := range a.clients {
 		c.RawActiveConns = 0
 		// Calculate Speed
+		if c.LastSpeedCalc.IsZero() {
+			c.LastSpeedCalc = now
+			c.TotalUploadLast = c.TotalUpload
+			c.TotalDownloadLast = c.TotalDownload
+			continue
+		}
+
 		duration := now.Sub(c.LastSpeedCalc)
-		if duration.Seconds() >= 1 {
-			c.UploadSpeed = uint64(float64(c.TotalUpload-c.TotalUploadLast) / duration.Seconds())
-			c.DownloadSpeed = uint64(float64(c.TotalDownload-c.TotalDownloadLast) / duration.Seconds())
+		if duration.Seconds() >= 0.5 {
+			// Avoid division by zero (shouldn't happen with check above)
+			secs := duration.Seconds()
+			c.UploadSpeed = uint64(float64(c.TotalUpload-c.TotalUploadLast) / secs)
+			c.DownloadSpeed = uint64(float64(c.TotalDownload-c.TotalDownloadLast) / secs)
 
 			c.TotalUploadLast = c.TotalUpload
 			c.TotalDownloadLast = c.TotalDownload
@@ -422,6 +398,29 @@ func (a *Aggregator) calculateSpeedStats() {
 		if now.Sub(f.LastSeen) > 60*time.Second {
 			delete(a.flows, key)
 			continue
+		}
+
+		// Calculate Flow Speed
+		if f.SpeedLastCalc.IsZero() {
+			f.SpeedLastCalc = now
+			f.SpeedTotalOriginLast = f.TotalOriginBytes
+			f.SpeedTotalReplyLast = f.TotalReplyBytes
+		} else {
+			fduration := now.Sub(f.SpeedLastCalc)
+			if fduration.Seconds() >= 0.5 {
+				fsecs := fduration.Seconds()
+
+				// Origin Speed (Upload/Download depends on direction)
+				origSpeed := uint64(float64(f.TotalOriginBytes-f.SpeedTotalOriginLast) / fsecs)
+				replySpeed := uint64(float64(f.TotalReplyBytes-f.SpeedTotalReplyLast) / fsecs)
+
+				f.OrigSpeed = origSpeed
+				f.ReplySpeed = replySpeed
+
+				f.SpeedTotalOriginLast = f.TotalOriginBytes
+				f.SpeedTotalReplyLast = f.TotalReplyBytes
+				f.SpeedLastCalc = now
+			}
 		}
 
 		globalRawActiveCount++
@@ -482,7 +481,10 @@ func (a *Aggregator) GetFlowsByMAC(mac string) ([]model.FlowDetail, int, []strin
 		TotalUpload     uint64
 		SessionDownload uint64
 		SessionUpload   uint64
+		DownloadSpeed   uint64
+		UploadSpeed     uint64
 		ActiveConns     int
+		LocalIP         string
 		FirstSeen       time.Time
 		LastSeen        time.Time
 	}
@@ -520,16 +522,19 @@ func (a *Aggregator) GetFlowsByMAC(mac string) ([]model.FlowDetail, int, []strin
 			ipSet[f.DstIP] = struct{}{}
 		}
 
-		// Determine Remote Tuple
+		// Determine Remote Tuple and Local IP
 		var remoteIP string
 		var remotePort uint16
+		var localIP string
 
 		if isSrc {
 			// Local is Src, Remote is Dst
+			localIP = f.SrcIP
 			remoteIP = f.DstIP
 			remotePort = f.DstPort
 		} else {
 			// Local is Dst, Remote is Src
+			localIP = f.DstIP
 			remoteIP = f.SrcIP
 			remotePort = f.SrcPort
 		}
@@ -560,6 +565,7 @@ func (a *Aggregator) GetFlowsByMAC(mac string) ([]model.FlowDetail, int, []strin
 			val = &aggVal{
 				FirstSeen: f.FirstSeen,
 				LastSeen:  f.LastSeen,
+				LocalIP:   localIP,
 			}
 			aggregated[k] = val
 		}
@@ -569,6 +575,19 @@ func (a *Aggregator) GetFlowsByMAC(mac string) ([]model.FlowDetail, int, []strin
 		val.SessionDownload += sessionDl
 		val.SessionUpload += sessionUl
 		val.ActiveConns++
+
+		// Sum Speeds
+		// Orig = Src -> Dst
+		// Reply = Dst -> Src
+		if isSrc {
+			// I am Src. My Upload is Orig. My Download is Reply.
+			val.UploadSpeed += f.OrigSpeed
+			val.DownloadSpeed += f.ReplySpeed
+		} else {
+			// I am Dst. My Upload is Reply. My Download is Orig.
+			val.UploadSpeed += f.ReplySpeed
+			val.DownloadSpeed += f.OrigSpeed
+		}
 
 		if f.FirstSeen.Before(val.FirstSeen) {
 			val.FirstSeen = f.FirstSeen
@@ -583,12 +602,15 @@ func (a *Aggregator) GetFlowsByMAC(mac string) ([]model.FlowDetail, int, []strin
 	for k, v := range aggregated {
 		flows = append(flows, model.FlowDetail{
 			Protocol:          getProtocolName(k.Proto),
+			ClientIP:          v.LocalIP,
 			RemoteIP:          k.RemoteIP,
 			RemotePort:        k.RemotePort,
 			TotalDownload:     v.TotalDownload,
 			TotalUpload:       v.TotalUpload,
 			SessionDownload:   v.SessionDownload,
 			SessionUpload:     v.SessionUpload,
+			DownloadSpeed:     v.DownloadSpeed,
+			UploadSpeed:       v.UploadSpeed,
 			ActiveConnections: uint64(v.ActiveConns),
 			Duration:          uint64(time.Since(v.FirstSeen).Seconds()),
 		})
@@ -711,7 +733,6 @@ func (a *Aggregator) SetInterface(ifaceName string) error {
 	a.mu.Lock()
 	a.interfaceName = ifaceName
 	a.interfaceIndex = link.Attrs().Index
-	a.ipIfCache = make(map[string]int) // Clear cache on change
 
 	// Fetch Subnets
 	a.lanSubnets = nil
@@ -720,6 +741,7 @@ func (a *Aggregator) SetInterface(ifaceName string) error {
 		for _, addr := range addrs {
 			if addr.IPNet != nil {
 				a.lanSubnets = append(a.lanSubnets, *addr.IPNet)
+				fmt.Printf("[Info] Detected LAN Subnet: %s\n", addr.IPNet.String())
 			}
 		}
 	}
@@ -735,44 +757,28 @@ func (a *Aggregator) SetIgnoreLAN(ignore bool) {
 	a.ignoreLAN = ignore
 }
 
-// checkFlowInterface returns true if the flow matches the monitored interface
-// flow is considered matching if EITHER Src OR Dst routes via the interface.
-func (a *Aggregator) checkFlowInterface(src, dst net.IP) bool {
-	if a.interfaceIndex == 0 {
+// checkFlowSubnet returns true if either Src or Dst matches the monitored interface subnets
+func (a *Aggregator) checkFlowSubnet(src, dst net.IP) bool {
+	if a.interfaceName == "" {
 		return true // No filtering
 	}
 
-	// Helper to get interface index for an IP
-	getIndex := func(ip net.IP) int {
-		ipStr := ip.String()
-		if idx, ok := a.ipIfCache[ipStr]; ok {
-			return idx
+	// Helper to check if IP is in any LAN subnet
+	inSubnet := func(ip net.IP) bool {
+		for _, sn := range a.lanSubnets {
+			if sn.Contains(ip) {
+				return true
+			}
 		}
-
-		// Look up route
-		routes, err := netlink.RouteGet(ip)
-		if err != nil || len(routes) == 0 {
-			a.ipIfCache[ipStr] = -1 // Cache absence/error
-			return -1
-		}
-
-		// Usually the first route is the one used
-		idx := routes[0].LinkIndex
-
-		// If it's a local route, check MultiPath or Source?
-		// RouteGet should return the egress interface.
-
-		a.ipIfCache[ipStr] = idx
-		return idx
+		return false
 	}
 
-	srcIdx := getIndex(src)
-	dstIdx := getIndex(dst)
+	return inSubnet(src) || inSubnet(dst)
+}
 
-	// If either endpoint routes via the monitored interface, we include it.
-	if srcIdx == a.interfaceIndex || dstIdx == a.interfaceIndex {
-		return true
+func safeSub(a, b uint64) uint64 {
+	if a >= b {
+		return a - b
 	}
-
-	return false
+	return 0
 }

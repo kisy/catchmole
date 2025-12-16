@@ -29,6 +29,7 @@ type ClientStats struct {
 
 type FlowDetail struct {
 	Protocol          string `json:"protocol"`
+	ClientIP          string `json:"client_ip"`
 	RemoteIP          string `json:"remote_ip"`
 	RemotePort        uint16 `json:"remote_port"`
 	TotalDownload     uint64 `json:"total_download"`
