@@ -202,13 +202,22 @@
   }
   /* Specific adjustments */
   td[data-label="RX"],
-  td[data-label="TX"],
-  td[data-label="Duration"] {
+  td[data-label="TX"] {
     display: block !important;
     padding-top: 10px;
     padding-bottom: 10px;
     justify-content: unset;
   }
+  td[data-label="Duration"] {
+      gap: 0.5rem;
+  }
+  .duration-text {
+      order: 2;
+  }
+  .countdown-text {
+      order: 1;
+  }
+
   .ip-cell {
     width: 100%;
     justify-content: flex-end;

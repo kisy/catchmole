@@ -459,9 +459,9 @@
                 <td
                   data-label="Duration"
                 >
-                  <div x-text="formatDuration(f.duration)"></div>
+                  <div class="duration-text" x-text="formatDuration(f.duration)"></div>
                   <template x-if="f.ttl_remaining !== undefined && f.ttl_remaining < (flowTTL - 2)">
-                     <div style="font-size: 0.8em; color: var(--pico-muted-color);" x-text="formatDuration(f.ttl_remaining)"></div>
+                     <div class="countdown-text" style="font-size: 0.8em; color: var(--pico-muted-color);" x-text="formatDuration(f.ttl_remaining)"></div>
                   </template>
                 </td>
                 <td data-label="RX">
