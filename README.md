@@ -44,6 +44,9 @@ flow_ttl = 60           # 流量记录缓存时间(秒)
 
 [devices]               # 设备别名
 "aa:bb:cc:dd:ee:ff" = "MyPhone"
+
+[ip_tools]              # IP工具链接
+"ipinfo.io" = "https://ipinfo.io/"
 ```
 
 ## 📊 Grafana 集成

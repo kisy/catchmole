@@ -24,6 +24,7 @@ type Config struct {
 	RefreshInterval int               `toml:"interval"`
 	FlowTTL         int               `toml:"flow_ttl"`
 	Devices         map[string]string `toml:"devices"`
+	IpTools         map[string]string `toml:"ip_tools"`
 }
 
 func main() {
@@ -128,7 +129,7 @@ func main() {
 	prometheus.MustRegister(exporter)
 
 	// 5. Initialize Web Server
-	srv := web.NewServer(agg)
+	srv := web.NewServer(agg, config.IpTools)
 	srv.RegisterHandlers()
 
 	// 6. Run Server

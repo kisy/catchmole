@@ -23,12 +23,14 @@ var clientHtmlContent []byte
 var staticFiles embed.FS
 
 type Server struct {
-	agg *stats.Aggregator
+	agg     *stats.Aggregator
+	ipTools map[string]string
 }
 
-func NewServer(agg *stats.Aggregator) *Server {
+func NewServer(agg *stats.Aggregator, ipTools map[string]string) *Server {
 	return &Server{
-		agg: agg,
+		agg:     agg,
+		ipTools: ipTools,
 	}
 }
 
@@ -44,6 +46,16 @@ func (s *Server) RegisterHandlers() {
 	})
 
 	http.Handle("/static/", http.FileServer(http.FS(staticFiles)))
+
+	http.HandleFunc("/api/meta", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		response := struct {
+			IpTools map[string]string `json:"ip_tools"`
+		}{
+			IpTools: s.ipTools,
+		}
+		json.NewEncoder(w).Encode(response)
+	})
 
 	http.HandleFunc("/api/stats", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

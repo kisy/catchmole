@@ -1,5 +1,8 @@
 listen = ":9035"
 interface = "br-lan"
 
+[ip_tools]
+"ipinfo.io" = "https://ipinfo.io/"
+
 [devices]
 "11:22:e5:19:16:33" = "Test-Device"

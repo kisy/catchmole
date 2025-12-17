@@ -197,6 +197,7 @@ document.addEventListener('alpine:init', () => {
         filterRemoteIP: '',
         filterRemotePort: '',
         ipProvider: localStorage.getItem('catchmole_ipProvider') || 'https://ipinfo.io/',
+        ipTools: {}, // Store available tools
         autoRefresh: true,
         theme: getInitialTheme(),
         
@@ -217,10 +218,31 @@ document.addEventListener('alpine:init', () => {
             // Apply Initial Theme
             applyTheme(this.theme);
 
+            this.fetchMeta();
             this.fetchData();
             setInterval(() => {
                 if (this.autoRefresh) this.fetchData();
             }, 1000);
+        },
+
+        async fetchMeta() {
+             try {
+                const res = await fetch('/api/meta');
+                const data = await res.json();
+                if (data.ip_tools) {
+                    this.ipTools = data.ip_tools;
+                    // Ensure current provider is valid, else default to first
+                    const tools = Object.values(this.ipTools);
+                    if (tools.length > 0 && !Object.values(this.ipTools).includes(this.ipProvider)) {
+                         // prioritize ipinfo if exists, else first
+                         if (this.ipTools['ipinfo.io']) {
+                             this.ipProvider = this.ipTools['ipinfo.io'];
+                         } else {
+                             this.ipProvider = tools[0];
+                         }
+                    }
+                }
+            } catch (e) { console.error('Failed to fetch meta:', e); }
         },
 
         async fetchData() {
