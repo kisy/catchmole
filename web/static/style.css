@@ -202,7 +202,8 @@
   }
   /* Specific adjustments */
   td[data-label="RX"],
-  td[data-label="TX"] {
+  td[data-label="TX"],
+  td[data-label="Duration"] {
     display: block !important;
     padding-top: 10px;
     padding-bottom: 10px;
