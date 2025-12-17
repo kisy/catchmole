@@ -250,6 +250,7 @@ document.addEventListener('alpine:init', () => {
                 const res = await fetch(`/api/client?mac=${this.mac}`);
                 const data = await res.json();
                 this.client = data.client || {};
+                this.flowTTL = data.flow_ttl || 60; // Default to 60 if missing
                 
                 let flows = data.flows || [];
                 // Pre-calculate keys to avoid side-effects in computed property

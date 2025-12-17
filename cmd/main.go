@@ -129,7 +129,7 @@ func main() {
 	prometheus.MustRegister(exporter)
 
 	// 5. Initialize Web Server
-	srv := web.NewServer(agg, config.IpTools)
+	srv := web.NewServer(agg, config.IpTools, config.FlowTTL)
 	srv.RegisterHandlers()
 
 	// 6. Run Server

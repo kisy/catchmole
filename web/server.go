@@ -25,12 +25,14 @@ var staticFiles embed.FS
 type Server struct {
 	agg     *stats.Aggregator
 	ipTools map[string]string
+	flowTTL int
 }
 
-func NewServer(agg *stats.Aggregator, ipTools map[string]string) *Server {
+func NewServer(agg *stats.Aggregator, ipTools map[string]string, flowTTL int) *Server {
 	return &Server{
 		agg:     agg,
 		ipTools: ipTools,
+		flowTTL: flowTTL,
 	}
 }
 
@@ -104,10 +106,12 @@ func (s *Server) RegisterHandlers() {
 			Client   *model.ClientStats `json:"client"`
 			Flows    []model.FlowDetail `json:"flows"`
 			LocalIPs []string           `json:"local_ips"`
+			FlowTTL  int                `json:"flow_ttl"`
 		}{
 			Client:   clientStats,
 			Flows:    flows,
 			LocalIPs: localIPs,
+			FlowTTL:  s.flowTTL,
 		}
 		json.NewEncoder(w).Encode(response)
 	})

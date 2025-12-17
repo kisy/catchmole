@@ -458,8 +458,12 @@
                 <td data-label="Conns" x-text="f.active_connections"></td>
                 <td
                   data-label="Duration"
-                  x-text="formatDuration(f.duration)"
-                ></td>
+                >
+                  <div x-text="formatDuration(f.duration)"></div>
+                  <template x-if="f.ttl_remaining !== undefined && f.ttl_remaining < (flowTTL - 2)">
+                     <div style="font-size: 0.8em; color: var(--pico-muted-color);" x-text="formatDuration(f.ttl_remaining)"></div>
+                  </template>
+                </td>
                 <td data-label="RX">
                   <div
                     class="stat-value"

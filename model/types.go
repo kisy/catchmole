@@ -41,6 +41,7 @@ type FlowDetail struct {
 	Duration          uint64 `json:"duration"`
 	SessionDuration   uint64 `json:"session_duration"`
 	ActiveConnections uint64 `json:"active_connections"`
+	TTLRemaining      int    `json:"ttl_remaining"`
 }
 
 type GlobalStats struct {

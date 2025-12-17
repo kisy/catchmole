@@ -296,12 +296,15 @@ func (a *Aggregator) GetClients() []model.ClientStats {
 }
 
 func (a *Aggregator) GetStartTime() time.Time {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	return a.startTime
 }
 
 func (a *Aggregator) Reset() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.startTime = time.Now()
 	a.globalTotalDownload = 0
 	a.globalTotalUpload = 0
 	a.clients = make(map[string]*model.ClientStats)
@@ -627,6 +630,7 @@ func (a *Aggregator) GetFlowsByMAC(mac string) ([]model.FlowDetail, int, []strin
 			UploadSpeed:       v.UploadSpeed,
 			ActiveConnections: uint64(v.ActiveConns),
 			Duration:          uint64(v.LastSeen.Sub(v.FirstSeen).Seconds()),
+			TTLRemaining:      int(a.flowTTL.Seconds() - time.Since(v.LastSeen).Seconds()),
 		})
 		totalActiveConns += v.ActiveConns
 	}
