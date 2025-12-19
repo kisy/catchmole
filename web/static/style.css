@@ -4,6 +4,16 @@
   --pico-font-size: 14px;
 }
 
+/* 页面淡入动画 - 消除跳转白屏 */
+body {
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 /* Relax container constraints to utilize screen space (Fluid except on huge screens) */
 /* Relax container constraints to utilize screen space (Fluid except on huge screens) */
 @media (min-width: 768px) {
