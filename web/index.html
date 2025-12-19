@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>CatchMole Monitor</title>
+    <link rel="icon" type="image/png" href="/static/logo.png" />
+    <link rel="apple-touch-icon" href="/static/logo.png" />
+    <link rel="stylesheet" href="/static/pico.min.css">
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/alpine.js" defer></script>
+</head>
+<body x-data="app">
+
+    <main class="container">
+        
+        <!-- ==================== CLIENTS LIST VIEW ==================== -->
+        <section x-show="currentView === 'clients'" x-cloak>
+            <!-- Header -->
+            <div class="header-bar">
+                <div class="header-title-block">
+                    <hgroup>
+                        <h1>CatchMole</h1>
+                        <p x-show="startTime" style="font-size: 0.8rem; color: var(--pico-muted-color);">
+                            Since: <span x-text="new Date(startTime).toLocaleString()"></span>
+                        </p>
+                    </hgroup>
+                    <div class="header-switches">
+                        <label style="margin-bottom: 0; white-space: nowrap; user-select: none; cursor: pointer;" title="Toggle Dark/Light Mode">
+                            <input type="checkbox" id="switch-theme" name="theme_toggle" role="switch" @click="toggleTheme()" :checked="theme === 'dark'">
+                            <span x-text="theme === 'dark' ? 'Dark' : 'Light'" style="font-size: 0.8rem;"></span>
+                        </label>
+                         <label style="margin-bottom: 0; white-space: nowrap; user-select: none; cursor: pointer;">
+                            <input type="checkbox" id="switch-auto-refresh" name="auto_refresh" role="switch" x-model="autoRefresh">
+                            <span x-text="autoRefresh ? 'Auto-Refresh' : 'Paused'" style="font-size: 0.8rem;"></span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="global-stats">
+                    <div class="stat-box">
+                        <div style="font-size: 0.7rem;">Devices</div>
+                        <div style="font-size: 1.5rem; font-weight: bold;" x-text="clients.length || 0"></div>
+                    </div>
+                    <div class="stat-box">
+                        <div style="font-size: 0.7rem;">Conns</div>
+                        <div style="font-size: 1.5rem; font-weight: bold;" x-text="global.active_connections || 0"></div>
+                    </div>
+                    <div class="stat-box">
+                        <div style="font-size: 0.7rem;">Download</div>
+                        <div class="stat-value" x-text="'↓ ' + formatSpeed(global.download_speed || 0)"></div>
+                        <div class="stat-global" x-text="formatBytes(global.total_download || 0)"></div>
+                    </div>
+                    <div class="stat-box">
+                        <div style="font-size: 0.7rem;">Upload</div>
+                        <div class="stat-value" x-text="'↑ ' + formatSpeed(global.upload_speed || 0)"></div>
+                        <div class="stat-global" x-text="formatBytes(global.total_upload || 0)"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div class="controls-bar">
+                <div style="flex: 1; max-width: 400px;">
+                    <input type="search" id="client-search" name="search" placeholder="Search Name, IP, MAC..." x-model="search" style="margin-bottom: 0;">
+                </div>
+                <div>
+                     <button class="outline contrast" @click="resetAll()">Reset</button>
+                </div>
+            </div>
+
+            <!-- Mobile Sort -->
+            <div class="mobile-view-only">
+                <select id="mobile-sort" name="mobile_sort" @change="setMobileSort($event.target.value)">
+                    <option value="name:asc" :selected="sortBy=='name' && !sortDesc">Name (A-Z)</option>
+                    <option value="total_download:desc" :selected="sortBy=='total_download' && sortDesc">Download Total</option>
+                    <option value="total_upload:desc" :selected="sortBy=='total_upload' && sortDesc">Upload Total</option>
+                    <option value="download_speed:desc" :selected="sortBy=='download_speed' && sortDesc">Download Speed</option>
+                    <option value="upload_speed:desc" :selected="sortBy=='upload_speed' && sortDesc">Upload Speed</option>
+                    <option value="active_connections:desc" :selected="sortBy=='active_connections' && sortDesc">Conns</option>
+                </select>
+            </div>
+
+            <!-- Table -->
+            <div class="overflow-auto">
+                <table class="striped">
+                    <thead>
+                        <tr>
+                            <th @click="setSort('name')" :class="{'active': sortBy=='name', 'sort-asc': !sortDesc, 'sort-desc': sortDesc}">Name</th>
+                            <th @click="setSort('mac')" :class="{'active': sortBy=='mac', 'sort-asc': !sortDesc, 'sort-desc': sortDesc}">MAC</th>
+                            <th @click="setSort('started')" :class="{'active': sortBy=='started', 'sort-asc': !sortDesc, 'sort-desc': sortDesc}">Duration</th>
+                            <th @click="setSort('active_connections')" :class="{'active': sortBy=='active_connections', 'sort-asc': !sortDesc, 'sort-desc': sortDesc}">Conns</th>
+                            <th class="text-right">
+                                RX <span class="sub-sort" @click.stop="setSort('download_speed')" :class="{'active': sortBy=='download_speed', 'sort-asc': sortBy=='download_speed' && !sortDesc, 'sort-desc': sortBy=='download_speed' && sortDesc}">S</span> |
+                                <span class="sub-sort" @click.stop="setSort('total_download')" :class="{'active': sortBy=='total_download', 'sort-asc': sortBy=='total_download' && !sortDesc, 'sort-desc': sortBy=='total_download' && sortDesc}">T</span>
+                            </th>
+                            <th class="text-right">
+                                TX <span class="sub-sort" @click.stop="setSort('upload_speed')" :class="{'active': sortBy=='upload_speed', 'sort-asc': sortBy=='upload_speed' && !sortDesc, 'sort-desc': sortBy=='upload_speed' && sortDesc}">S</span> |
+                                <span class="sub-sort" @click.stop="setSort('total_upload')" :class="{'active': sortBy=='total_upload', 'sort-asc': sortBy=='total_upload' && !sortDesc, 'sort-desc': sortBy=='total_upload' && sortDesc}">T</span>
+                            </th>
+                            <th class="text-right">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="c in sortedClients" :key="c.mac">
+                            <tr>
+                                <td data-label="Name" x-text="c.name || '-'"></td>
+                                <td data-label="MAC" x-text="c.mac"></td>
+                                <td data-label="Duration" x-text="formatDurationSince(c.start_time)"></td>
+                                <td data-label="Conns" x-text="c.active_connections || 0"></td>
+                                <td data-label="RX">
+                                    <div class="stat-value" style="font-size: 0.9em;" x-text="'↓ ' + formatSpeed(c.download_speed)"></div>
+                                    <div class="stat-global" x-text="formatBytes(c.total_download)"></div>
+                                </td>
+                                <td data-label="TX">
+                                    <div class="stat-value" style="font-size: 0.9em;" x-text="'↑ ' + formatSpeed(c.upload_speed)"></div>
+                                    <div class="stat-global" x-text="formatBytes(c.total_upload)"></div>
+                                </td>
+                                <td data-label="Action" class="text-right">
+                                    <a role="button" class="outline secondary" @click.prevent="navigate('/' + c.mac)" :href="'/' + c.mac" style="padding: 4px 8px; font-size: 0.8rem;">Detail</a>
+                                </td>
+                            </tr>
+                        </template>
+                        <tr x-show="clients.length === 0">
+                            <td colspan="7" style="text-align: center;">No clients found</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ==================== CLIENT DETAIL VIEW ==================== -->
+        <section x-show="currentView === 'client'" x-cloak>
+            <!-- Header -->
+            <div class="header-bar">
+                <div class="header-title-block">
+                    <hgroup>
+                        <h1 x-text="detail.client.name || 'Client Details'"></h1>
+                        <p style="font-size: 0.9rem; color: var(--pico-muted-color)">
+                            <span x-text="detail.client.mac">Loading...</span><br />
+                            <span x-show="detail.client.start_time" style="font-size: 0.8rem">Started:
+                                <span x-text="new Date(detail.client.start_time).toLocaleString()"></span>
+                            </span>
+                        </p>
+                    </hgroup>
+                </div>
+
+                <div class="header-switches">
+                    <label style="margin-bottom: 0; white-space: nowrap; user-select: none; cursor: pointer;" title="Toggle Dark/Light Mode">
+                        <input type="checkbox" id="switch-theme-detail" name="theme_toggle" role="switch" @click="toggleTheme()" :checked="theme === 'dark'" />
+                        <span x-text="theme === 'dark' ? 'Dark' : 'Light'" style="font-size: 0.8rem"></span>
+                    </label>
+                    <label style="margin-bottom: 0; white-space: nowrap; user-select: none; cursor: pointer;">
+                        <input type="checkbox" id="switch-auto-refresh-detail" name="auto_refresh" role="switch" x-model="autoRefresh" />
+                        <span x-text="autoRefresh ? 'Auto-Refresh' : 'Paused'" style="font-size: 0.8rem"></span>
+                    </label>
+                    <select
+                        id="ip-provider"
+                        name="ip_provider"
+                        x-model="detail.ipProvider"
+                        @change="setProvider($event.target.value)"
+                        style="padding: 2px 24px 2px 8px; font-size: 0.8rem; height: auto; margin-bottom: 0; width: auto; background-position: right 0.5rem center; border-color: var(--pico-muted-border-color);"
+                    >
+                        <template x-for="(url, name) in detail.ipTools" :key="name">
+                            <option :value="url" x-text="name" :selected="detail.ipProvider === url"></option>
+                        </template>
+                        <template x-if="!detail.ipTools || Object.keys(detail.ipTools).length === 0">
+                            <option value="https://ipinfo.io/">ipinfo.io</option>
+                        </template>
+                    </select>
+                </div>
+
+                <div class="global-stats">
+                    <div class="stat-box">
+                        <div style="font-size: 0.7rem">Flows</div>
+                        <div style="font-size: 1.5rem; font-weight: bold" x-text="detail.flows.length || 0"></div>
+                    </div>
+                    <div class="stat-box">
+                        <div style="font-size: 0.7rem">Conns</div>
+                        <div style="font-size: 1.5rem; font-weight: bold" x-text="detail.client.active_connections || 0"></div>
+                    </div>
+                    <div class="stat-box">
+                        <div style="font-size: 0.7rem">Download</div>
+                        <div class="stat-value" x-text="'↓ ' + formatSpeed(detail.client.download_speed || 0)"></div>
+                        <div class="stat-session" title="Session" x-text="formatBytes(detail.client.session_download || 0)"></div>
+                        <div class="stat-global" title="Total" x-text="formatBytes(detail.client.total_download || 0)"></div>
+                    </div>
+                    <div class="stat-box">
+                        <div style="font-size: 0.7rem">Upload</div>
+                        <div class="stat-value" x-text="'↑ ' + formatSpeed(detail.client.upload_speed || 0)"></div>
+                        <div class="stat-session" title="Session" x-text="formatBytes(detail.client.session_upload || 0)"></div>
+                        <div class="stat-global" title="Total" x-text="formatBytes(detail.client.total_upload || 0)"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- IPs List -->
+            <div x-data="{ expanded: false }" style="width: 100%; margin-bottom: 20px">
+                <div class="ip-list-block" :class="{ 'expanded': expanded }">
+                    <template x-for="ip in detail.uniqueIPs" :key="ip">
+                        <div class="ip-item-box">
+                            <div class="ip-cell">
+                                <span x-text="ip"></span>
+                                <button class="copy-btn" @click="copyText(ip)" title="Copy IP">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                    <button class="ip-toggle-btn" x-show="detail.uniqueIPs.length > 1" @click="expanded = !expanded" x-text="expanded ? 'Show Less' : (detail.uniqueIPs.length - 1) + ' more'"></button>
+                </div>
+                <span x-show="detail.uniqueIPs.length === 0" style="font-style: italic; color: var(--pico-muted-color); font-size: 0.8rem; display: block; text-align: right;">No active IPs</span>
+            </div>
+
+            <!-- Controls (Back + Reset) -->
+            <div class="controls-bar">
+                <div>
+                    <a @click.prevent="navigate('/')" href="/" role="button" class="secondary outline">← Back</a>
+                </div>
+                <div style="text-align: right; display: flex; gap: 8px">
+                    <button class="outline contrast" @click="resetSession()" style="font-size: 0.8rem">Reset</button>
+                    <button class="outline secondary" @click="resetGlobal()" style="font-size: 0.8rem">Reset Global</button>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <details style="margin-top: 20px; border-top: 1px solid var(--pico-muted-border-color); padding-top: 20px;">
+                <summary>Filters</summary>
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
+                    <input type="text" id="filter-protocol" name="protocol" placeholder="Protocol" x-model="detail.filterProtocol" style="margin-bottom: 0; flex: 1; min-width: 80px" />
+                    <input type="text" id="filter-remote-ip" name="remote_ip" placeholder="Remote IP" x-model="detail.filterRemoteIP" style="margin-bottom: 0; flex: 2; min-width: 120px" />
+                    <input type="text" id="filter-remote-port" name="remote_port" placeholder="Port" x-model="detail.filterRemotePort" style="margin-bottom: 0; flex: 1; min-width: 80px" />
+                    <button class="secondary outline" @click="clearFilters()" style="width: auto; margin-bottom: 0; padding: 6px 12px; font-size: 0.9rem;">Clear</button>
+                </div>
+            </details>
+            <div style="margin-bottom: 20px"></div>
+
+            <!-- Mobile Sort -->
+            <div class="mobile-view-only" style="margin-bottom: 10px">
+                <select id="mobile-sort-detail" name="mobile_sort" @change="setDetailMobileSort($event.target.value)" style="margin-bottom: 0">
+                    <option value="remote_ip:asc" :selected="detail.sortBy=='remote_ip' && !detail.sortDesc">Remote IP (A-Z)</option>
+                    <option value="active_connections:desc" :selected="detail.sortBy=='active_connections' && detail.sortDesc">Conns</option>
+                    <option value="duration:desc" :selected="detail.sortBy=='duration' && detail.sortDesc">Duration</option>
+                    <option value="session_download:desc" :selected="detail.sortBy=='session_download' && detail.sortDesc">Download Total</option>
+                    <option value="session_upload:desc" :selected="detail.sortBy=='session_upload' && detail.sortDesc">Upload Total</option>
+                    <option value="download_speed:desc" :selected="detail.sortBy=='download_speed' && detail.sortDesc">Download Speed</option>
+                    <option value="upload_speed:desc" :selected="detail.sortBy=='upload_speed' && detail.sortDesc">Upload Speed</option>
+                </select>
+            </div>
+
+            <!-- Table -->
+            <div class="overflow-auto">
+                <table class="striped">
+                    <thead>
+                        <tr>
+                            <th @click="setDetailSort('protocol')" :class="{'active': detail.sortBy=='protocol', 'sort-asc': !detail.sortDesc, 'sort-desc': detail.sortDesc}">Proto</th>
+                            <th class="text-right" @click="setDetailSort('remote_ip')" :class="{'active': detail.sortBy=='remote_ip', 'sort-asc': !detail.sortDesc, 'sort-desc': detail.sortDesc}">Remote IP</th>
+                            <th @click="setDetailSort('remote_port')" :class="{'active': detail.sortBy=='remote_port', 'sort-asc': !detail.sortDesc, 'sort-desc': detail.sortDesc}">Port</th>
+                            <th @click="setDetailSort('active_connections')" :class="{'active': detail.sortBy=='active_connections', 'sort-asc': !detail.sortDesc, 'sort-desc': detail.sortDesc}">Conns</th>
+                            <th @click="setDetailSort('duration')" :class="{'active': detail.sortBy=='duration', 'sort-asc': !detail.sortDesc, 'sort-desc': detail.sortDesc}">Duration</th>
+                            <th class="text-right">
+                                RX <span class="sub-sort" @click.stop="setDetailSort('download_speed')" :class="{'active': detail.sortBy=='download_speed', 'sort-asc': detail.sortBy=='download_speed' && !detail.sortDesc, 'sort-desc': detail.sortBy=='download_speed' && detail.sortDesc}">S</span> |
+                                <span class="sub-sort" @click.stop="setDetailSort('session_download')" :class="{'active': detail.sortBy=='session_download', 'sort-asc': detail.sortBy=='session_download' && !detail.sortDesc, 'sort-desc': detail.sortBy=='session_download' && detail.sortDesc}">T</span>
+                            </th>
+                            <th class="text-right">
+                                TX <span class="sub-sort" @click.stop="setDetailSort('upload_speed')" :class="{'active': detail.sortBy=='upload_speed', 'sort-asc': detail.sortBy=='upload_speed' && !detail.sortDesc, 'sort-desc': detail.sortBy=='upload_speed' && detail.sortDesc}">S</span> |
+                                <span class="sub-sort" @click.stop="setDetailSort('session_upload')" :class="{'active': detail.sortBy=='session_upload', 'sort-asc': detail.sortBy=='session_upload' && !detail.sortDesc, 'sort-desc': detail.sortBy=='session_upload' && detail.sortDesc}">T</span>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="f in filteredFlows" :key="f.key">
+                            <tr>
+                                <td data-label="Protocol" x-text="f.protocol"></td>
+                                <td class="text-right" data-label="Remote IP">
+                                    <div class="ip-cell">
+                                        <a :href="detail.ipProvider + f.remote_ip" target="_blank" rel="noopener noreferrer" class="ip-link" x-text="getIpView(f.remote_ip)"></a>
+                                        <button class="copy-btn" @click="copyText(f.remote_ip)" title="Copy IP">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </td>
+                                <td data-label="Port" x-text="f.remote_port"></td>
+                                <td data-label="Conns" x-text="f.active_connections"></td>
+                                <td data-label="Duration">
+                                    <div class="duration-text" x-text="formatDuration(f.duration)"></div>
+                                    <template x-if="f.ttl_remaining !== undefined && f.ttl_remaining < (detail.flowTTL - 2)">
+                                        <div class="countdown-text" style="font-size: 0.8em; color: var(--pico-muted-color);" x-text="formatDuration(f.ttl_remaining)"></div>
+                                    </template>
+                                </td>
+                                <td data-label="RX">
+                                    <div class="stat-value" style="font-size: 0.9em" x-text="'↓ ' + formatSpeed(f.download_speed)"></div>
+                                    <div class="stat-session" title="Session" x-text="formatBytes(f.session_download)"></div>
+                                    <div class="stat-global" title="Total" x-text="formatBytes(f.total_download)"></div>
+                                </td>
+                                <td data-label="TX">
+                                    <div class="stat-value" style="font-size: 0.9em" x-text="'↑ ' + formatSpeed(f.upload_speed)"></div>
+                                    <div class="stat-session" title="Session" x-text="formatBytes(f.session_upload)"></div>
+                                    <div class="stat-global" title="Total" x-text="formatBytes(f.total_upload)"></div>
+                                </td>
+                            </tr>
+                        </template>
+                        <tr x-show="filteredFlows.length === 0">
+                            <td colspan="7" style="text-align: center">No active flows</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

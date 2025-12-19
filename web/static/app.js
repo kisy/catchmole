@@ -67,8 +67,6 @@ function showToast(msg) {
     setTimeout(() => { el.style.opacity = '0'; }, 2000);
 }
 
-
-
 // Theme Helper
 function getInitialTheme() {
     const persisted = localStorage.getItem('catchmole_theme');
@@ -81,35 +79,115 @@ function applyTheme(theme) {
     localStorage.setItem('catchmole_theme', theme);
 }
 
-// Alpine Initialization
+// Alpine SPA App
 document.addEventListener('alpine:init', () => {
     
-    // === Clients List App ===
-    // === Clients List App ===
-    Alpine.data('clientsApp', () => ({
+    Alpine.data('app', () => ({
+        // === Router State ===
+        currentView: 'clients',
+        currentMac: null,
+        
+        // === Shared State ===
+        theme: getInitialTheme(),
+        autoRefresh: true,
+        
+        // === Clients List State ===
         clients: [],
         global: {},
         search: '',
         sortBy: localStorage.getItem('catchmole_sortBy') || 'total_download',
         sortDesc: localStorage.getItem('catchmole_sortDesc') === 'true',
         startTime: '',
-        autoRefresh: true,
-        theme: getInitialTheme(),
-
-        init() {
-            // Restore defaults if logic failed
-            if (!this.sortBy) { this.sortBy = 'total_download'; this.sortDesc = true; }
+        
+        // === Client Detail State ===
+        detail: {
+            client: {},
+            flows: [],
+            localIPs: [],
+            flowTTL: 60,
+            filterProtocol: '',
+            filterRemoteIP: '',
+            filterRemotePort: '',
+            ipProvider: localStorage.getItem('catchmole_ipProvider') || 'https://ipinfo.io/',
+            ipTools: {},
+            sortBy: localStorage.getItem('catchmole_detail_sortBy') || 'session_download',
+            sortDesc: (localStorage.getItem('catchmole_detail_sortDesc') ?? 'true') === 'true',
             
-            // Apply Initial Theme
+            get uniqueIPs() {
+                let ips = [...this.localIPs];
+                ips.sort((a, b) => {
+                    const isIPv4 = ip => ip.includes('.') && !ip.includes(':');
+                    const aIs4 = isIPv4(a);
+                    const bIs4 = isIPv4(b);
+                    if (aIs4 && !bIs4) return -1;
+                    if (!aIs4 && bIs4) return 1;
+                    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+                });
+                return ips;
+            }
+        },
+        
+        // === Lifecycle ===
+        init() {
+            // Restore defaults
+            if (!this.sortBy) { this.sortBy = 'total_download'; this.sortDesc = true; }
+            if (!this.detail.sortBy) this.detail.sortBy = 'session_download';
+            
+            // Apply theme
             applyTheme(this.theme);
-
+            
+            // Handle initial route
+            this.handleRoute();
+            
+            // Listen for browser navigation
+            window.addEventListener('popstate', () => this.handleRoute());
+            
+            // Start data fetching
             this.fetchData();
             setInterval(() => {
                 if (this.autoRefresh) this.fetchData();
             }, 1000);
         },
-
+        
+        // === Router ===
+        handleRoute() {
+            const path = window.location.pathname;
+            
+            // Root path = clients list
+            if (path === '/' || path === '') {
+                this.currentView = 'clients';
+                this.currentMac = null;
+            } else {
+                // /{mac-address} = client detail
+                const mac = path.substring(1); // Remove leading '/'
+                if (mac && !mac.includes('/')) {
+                    this.currentView = 'client';
+                    this.currentMac = mac;
+                    this.fetchMeta();
+                    this.fetchDetailData();
+                } else {
+                    // Fallback to clients list
+                    this.currentView = 'clients';
+                    this.currentMac = null;
+                }
+            }
+        },
+        
+        navigate(url) {
+            history.pushState({}, '', url);
+            this.handleRoute();
+        },
+        
+        // === Data Fetching ===
         async fetchData() {
+            if (this.currentView === 'clients') {
+                await this.fetchClientsData();
+            } else if (this.currentView === 'client' && this.currentMac) {
+                await this.fetchDetailData();
+            }
+        },
+        
+        async fetchClientsData() {
             try {
                 const res = await fetch('/api/stats');
                 const data = await res.json();
@@ -120,7 +198,43 @@ document.addEventListener('alpine:init', () => {
                 console.error(e);
             }
         },
-
+        
+        async fetchMeta() {
+            try {
+                const res = await fetch('/api/meta');
+                const data = await res.json();
+                if (data.ip_tools) {
+                    this.detail.ipTools = data.ip_tools;
+                    const tools = Object.values(this.detail.ipTools);
+                    if (tools.length > 0 && !Object.values(this.detail.ipTools).includes(this.detail.ipProvider)) {
+                        if (this.detail.ipTools['ipinfo.io']) {
+                            this.detail.ipProvider = this.detail.ipTools['ipinfo.io'];
+                        } else {
+                            this.detail.ipProvider = tools[0];
+                        }
+                    }
+                }
+            } catch (e) { console.error('Failed to fetch meta:', e); }
+        },
+        
+        async fetchDetailData() {
+            if (!this.currentMac) return;
+            try {
+                const res = await fetch(`/api/client?mac=${this.currentMac}`);
+                const data = await res.json();
+                this.detail.client = data.client || {};
+                this.detail.flowTTL = data.flow_ttl || 60;
+                
+                let flows = data.flows || [];
+                flows.forEach(f => {
+                    f.key = (f.protocol||'') + ':' + (f.remote_ip||'') + ':' + (f.remote_port||'');
+                });
+                this.detail.flows = flows;
+                this.detail.localIPs = data.local_ips || [];
+            } catch (e) { console.error(e); }
+        },
+        
+        // === Clients List Computed & Methods ===
         get sortedClients() {
             if (!this.clients) return [];
             
@@ -141,19 +255,18 @@ document.addEventListener('alpine:init', () => {
                 else if (va > vb) res = this.sortDesc ? -1 : 1;
 
                 if (res === 0) {
-                    // Secondary Name Sort
                     if ((a.name||'') < (b.name||'')) return -1;
                     if ((a.name||'') > (b.name||'')) return 1;
                 }
                 return res;
             });
         },
-
+        
         getValue(obj, key) {
             if (key === 'started') return obj.start_time;
             return obj[key] || 0;
         },
-
+        
         setSort(col) {
             if (this.sortBy === col) {
                 this.sortDesc = !this.sortDesc;
@@ -164,7 +277,7 @@ document.addEventListener('alpine:init', () => {
             localStorage.setItem('catchmole_sortBy', this.sortBy);
             localStorage.setItem('catchmole_sortDesc', this.sortDesc);
         },
-
+        
         setMobileSort(val) {
             const [col, dir] = val.split(':');
             this.sortBy = col;
@@ -172,192 +285,80 @@ document.addEventListener('alpine:init', () => {
             localStorage.setItem('catchmole_sortBy', this.sortBy);
             localStorage.setItem('catchmole_sortDesc', this.sortDesc);
         },
-
+        
         async resetAll() {
             if (!confirm('Clear ALL statistics?')) return;
             await fetch('/api/reset', { method: 'POST' });
-            this.fetchData();
+            this.fetchClientsData();
         },
-
-        toggleTheme() {
-            this.theme = this.theme === 'dark' ? 'light' : 'dark';
-            applyTheme(this.theme);
-        }
-    }));
-
-
-    // === Detail App ===
-    // === Detail App ===
-    Alpine.data('detailApp', () => ({
-        mac: new URLSearchParams(window.location.search).get('mac'),
-        client: {},
-        flows: [],
-        localIPs: [], // Store local IPs from API
-        filterProtocol: '',
-        filterRemoteIP: '',
-        filterRemotePort: '',
-        ipProvider: localStorage.getItem('catchmole_ipProvider') || 'https://ipinfo.io/',
-        ipTools: {}, // Store available tools
-        autoRefresh: true,
-        theme: getInitialTheme(),
         
-        // Flow Sorting
-        sortBy: localStorage.getItem('catchmole_detail_sortBy') || 'session_download',
-        sortDesc: (localStorage.getItem('catchmole_detail_sortDesc') ?? 'true') === 'true',
-
-        init() {
-            if (!this.mac) {
-                window.location.href = '/clients';
-                return;
-            }
-            
-            // Restore defaults if logic failed
-            if (!this.sortBy) this.sortBy = 'session_download';
-            if (this.sortDesc === undefined) this.sortDesc = true;
-            
-            // Apply Initial Theme
-            applyTheme(this.theme);
-
-            this.fetchMeta();
-            this.fetchData();
-            setInterval(() => {
-                if (this.autoRefresh) this.fetchData();
-            }, 1000);
-        },
-
-        async fetchMeta() {
-             try {
-                const res = await fetch('/api/meta');
-                const data = await res.json();
-                if (data.ip_tools) {
-                    this.ipTools = data.ip_tools;
-                    // Ensure current provider is valid, else default to first
-                    const tools = Object.values(this.ipTools);
-                    if (tools.length > 0 && !Object.values(this.ipTools).includes(this.ipProvider)) {
-                         // prioritize ipinfo if exists, else first
-                         if (this.ipTools['ipinfo.io']) {
-                             this.ipProvider = this.ipTools['ipinfo.io'];
-                         } else {
-                             this.ipProvider = tools[0];
-                         }
-                    }
-                }
-            } catch (e) { console.error('Failed to fetch meta:', e); }
-        },
-
-        async fetchData() {
-            try {
-                const res = await fetch(`/api/client?mac=${this.mac}`);
-                const data = await res.json();
-                this.client = data.client || {};
-                this.flowTTL = data.flow_ttl || 60; // Default to 60 if missing
-                
-                let flows = data.flows || [];
-                // Pre-calculate keys to avoid side-effects in computed property
-                flows.forEach(f => {
-                    f.key = (f.protocol||'') + ':' + (f.remote_ip||'') + ':' + (f.remote_port||'');
-                });
-                this.flows = flows;
-
-                this.localIPs = data.local_ips || []; // Receive local IPs from API
-            } catch (e) { console.error(e); }
-        },
-
-        get uniqueIPs() {
-            // Directly return localIPs from API instead of extracting from flows
-            // Sort IPs: IPv4 first, then IPv6
-             let ips = [...this.localIPs];
-             
-             ips.sort((a, b) => {
-                 // Simple IP sort helper
-                 // Check if IPv4
-                 const isIPv4 = ip => ip.includes('.') && !ip.includes(':');
-                 const aIs4 = isIPv4(a);
-                 const bIs4 = isIPv4(b);
-                 
-                 if (aIs4 && !bIs4) return -1;
-                 if (!aIs4 && bIs4) return 1;
-                 
-                 // Lexicographical sort (simple enough only for same version grouping)
-                 // For better IP sort we'd need a robust parser, but this is usually sufficient for UI
-                 // To sort numerically, we'd need to split segments.
-                 
-                 return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-             });
-             
-            return ips;
-        },
-
+        // === Detail View Computed & Methods ===
         get filteredFlows() {
-            if (!this.flows) return [];
+            if (!this.detail.flows) return [];
 
-            let list = this.flows.filter(f => {
-                if (this.filterProtocol && !f.protocol.toLowerCase().includes(this.filterProtocol.toLowerCase())) {
-                    return false;
-                };
-                if (this.filterRemoteIP && !f.remote_ip.includes(this.filterRemoteIP)) {
+            let list = this.detail.flows.filter(f => {
+                if (this.detail.filterProtocol && !f.protocol.toLowerCase().includes(this.detail.filterProtocol.toLowerCase())) {
                     return false;
                 }
-                if (this.filterRemotePort && !(f.remote_port + '').includes(this.filterRemotePort)) {
+                if (this.detail.filterRemoteIP && !f.remote_ip.includes(this.detail.filterRemoteIP)) {
                     return false;
                 }
-
+                if (this.detail.filterRemotePort && !(f.remote_port + '').includes(this.detail.filterRemotePort)) {
+                    return false;
+                }
                 return true;
             });
 
             return list.sort((a, b) => {
-                let va = a[this.sortBy] || 0;
-                let vb = b[this.sortBy] || 0;
+                let va = a[this.detail.sortBy] || 0;
+                let vb = b[this.detail.sortBy] || 0;
                 
                 let res = 0;
-                if (va < vb) res = this.sortDesc ? 1 : -1;
-                else if (va > vb) res = this.sortDesc ? -1 : 1;
+                if (va < vb) res = this.detail.sortDesc ? 1 : -1;
+                else if (va > vb) res = this.detail.sortDesc ? -1 : 1;
                 
                 if (res === 0) {
-                     const aIp = a.remote_ip || '';
-                     const bIp = b.remote_ip || '';
-                     if (aIp < bIp) return -1;
-                     if (aIp > bIp) return 1;
+                    const aIp = a.remote_ip || '';
+                    const bIp = b.remote_ip || '';
+                    if (aIp < bIp) return -1;
+                    if (aIp > bIp) return 1;
                 }
                 return res;
             });
-        }, 
-        // ... (keeping methods)
-
-        setSort(col) {
-            if (this.sortBy === col) {
-                this.sortDesc = !this.sortDesc;
-            } else {
-                this.sortBy = col;
-                this.sortDesc = true;
-            }
-            localStorage.setItem('catchmole_detail_sortBy', this.sortBy);
-            localStorage.setItem('catchmole_detail_sortDesc', this.sortDesc);
-        },
-
-        setMobileSort(val) {
-            const [col, dir] = val.split(':');
-            this.sortBy = col;
-            this.sortDesc = dir === 'desc';
-            localStorage.setItem('catchmole_detail_sortBy', this.sortBy);
-            localStorage.setItem('catchmole_detail_sortDesc', this.sortDesc);
-        },
-
-        setProvider(val) {
-            this.ipProvider = val;
-            localStorage.setItem('catchmole_ipProvider', val);
-        },
-
-        clearFilters() {
-            this.filterProtocol = '';
-            this.filterRemoteIP = '';
-            this.filterRemotePort = '';
         },
         
-        // IPv6 Helper Functions
+        setDetailSort(col) {
+            if (this.detail.sortBy === col) {
+                this.detail.sortDesc = !this.detail.sortDesc;
+            } else {
+                this.detail.sortBy = col;
+                this.detail.sortDesc = true;
+            }
+            localStorage.setItem('catchmole_detail_sortBy', this.detail.sortBy);
+            localStorage.setItem('catchmole_detail_sortDesc', this.detail.sortDesc);
+        },
+        
+        setDetailMobileSort(val) {
+            const [col, dir] = val.split(':');
+            this.detail.sortBy = col;
+            this.detail.sortDesc = dir === 'desc';
+            localStorage.setItem('catchmole_detail_sortBy', this.detail.sortBy);
+            localStorage.setItem('catchmole_detail_sortDesc', this.detail.sortDesc);
+        },
+        
+        setProvider(val) {
+            this.detail.ipProvider = val;
+            localStorage.setItem('catchmole_ipProvider', val);
+        },
+        
+        clearFilters() {
+            this.detail.filterProtocol = '';
+            this.detail.filterRemoteIP = '';
+            this.detail.filterRemotePort = '';
+        },
+        
         getIpView(ip) {
             if (!ip || !ip.includes(':')) return ip;
-
             const parts = ip.split(':');
             if (parts.length <= 4) return ip;
             
@@ -371,23 +372,24 @@ document.addEventListener('alpine:init', () => {
             
             return head + ' ~ ' + tail;
         },
-
+        
         copyText(text) {
             copyText(text);
         },
         
         async resetSession() {
             if (!confirm('Reset SESSION stats (duration, traffic) for this client?')) return;
-            await fetch(`/api/client/reset_session?mac=${this.mac}`, { method: 'POST' });
-            this.fetchData();
+            await fetch(`/api/client/reset_session?mac=${this.currentMac}`, { method: 'POST' });
+            this.fetchDetailData();
         },
-
+        
         async resetGlobal() {
-            if (!confirm(`Reset GLOBAL stats (history) for this client? This cannot be undone.`)) return;
-            await fetch(`/api/client/reset?mac=${this.mac}`, { method: 'POST' });
-            this.fetchData();
+            if (!confirm('Reset GLOBAL stats (history) for this client? This cannot be undone.')) return;
+            await fetch(`/api/client/reset?mac=${this.currentMac}`, { method: 'POST' });
+            this.fetchDetailData();
         },
-
+        
+        // === Shared Methods ===
         toggleTheme() {
             this.theme = this.theme === 'dark' ? 'light' : 'dark';
             applyTheme(this.theme);

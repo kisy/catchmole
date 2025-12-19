@@ -13,11 +13,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-//go:embed clients.html
-var htmlContent []byte
-
-//go:embed client.html
-var clientHtmlContent []byte
+//go:embed index.html
+var indexHTML []byte
 
 //go:embed static
 var staticFiles embed.FS
@@ -37,15 +34,18 @@ func NewServer(agg *stats.Aggregator, ipTools map[string]string, flowTTL int) *S
 }
 
 func (s *Server) RegisterHandlers() {
-	http.HandleFunc("/clients", func(w http.ResponseWriter, r *http.Request) {
+	// SPA fallback - serve index.html for all page routes
+	// "/" matches all paths not handled by other handlers
+	serveIndex := func(w http.ResponseWriter, r *http.Request) {
+		// Skip API and static paths
+		if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/static/") || r.URL.Path == "/metrics" {
+			http.NotFound(w, r)
+			return
+		}
 		w.Header().Set("Content-Type", "text/html")
-		w.Write(htmlContent)
-	})
-
-	http.HandleFunc("/client", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		w.Write(clientHtmlContent)
-	})
+		w.Write(indexHTML)
+	}
+	http.HandleFunc("/", serveIndex)
 
 	http.Handle("/static/", http.FileServer(http.FS(staticFiles)))
 

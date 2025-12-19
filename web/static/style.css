@@ -1,5 +1,8 @@
 /* Custom styles on top of Pico.css */
 
+/* Alpine.js cloak - hide until hydrated */
+[x-cloak] { display: none !important; }
+
 :root {
   --pico-font-size: 14px;
 }

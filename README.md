@@ -16,10 +16,10 @@ cd catchmole
 
 ```bash
 # 需要 root 权限
-sudo ./bin/catchmole-amd64 -c catchmole.toml
+sudo ./bin/catchmole-amd64 -c catchmole.toml -i br-lan
 ```
 
-访问 Web UI: `http://<ip>:8080/clients`
+访问 Web UI: `http://<ip>:8080/`
 
 ## ⚠️ 重要说明
 
